@@ -11,7 +11,7 @@
 // Wire format: Authorization: L402 <token>:<payment_hash>
 // 402 body: { invoice, macaroon, payment_hash, amount_sats, expires_at }
 
-import { createHmac } from 'crypto';
+import { createHmac } from 'node:crypto';
 
 const WALLET_URL = process.env.MDK_WALLET_URL ?? 'http://localhost:3456';
 

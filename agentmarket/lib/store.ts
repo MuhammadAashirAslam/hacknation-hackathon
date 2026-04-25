@@ -9,12 +9,22 @@ export interface ListJobsFilter {
   category?: Job['category'];
 }
 
-// Lazily marks a job 'expired' if its expiry window has passed. Mutates store.
+// Lazily applies status transitions based on time windows. Mutates store.
 function applyExpiry(job: Job): Job {
-  if (job.status === 'open' && Date.now() > job.expires_at) {
+  const now = Date.now();
+  if (job.status === 'open' && now > job.expires_at) {
     const expired: Job = { ...job, status: 'expired' };
     store.set(job.id, expired);
     return expired;
+  }
+  if (job.status === 'claimed' && job.claimed_at !== null) {
+    const windowMs = Number(process.env.CLAIM_WINDOW_MINUTES ?? '30') * 60_000;
+    if (now > job.claimed_at + windowMs) {
+      // Worker forfeits deposit; job returns to open for re-claim.
+      const reverted: Job = { ...job, status: 'open', worker_id: null, claimed_at: null };
+      store.set(job.id, reverted);
+      return reverted;
+    }
   }
   return job;
 }
