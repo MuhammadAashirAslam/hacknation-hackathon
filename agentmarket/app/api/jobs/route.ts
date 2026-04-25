@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { withL402 } from '@/lib/lightning';
 import { createJob, listJobs } from '@/lib/store';
+import { broadcast } from '@/lib/feed';
 import type { ApiError, Job, JobCategory } from '@/lib/types';
 
 const FEE_PERCENT = Number(process.env.MARKETPLACE_FEE_PERCENT ?? '10');
@@ -88,6 +89,16 @@ const createJobHandler = async (req: Request): Promise<Response> => {
       expires_at: now + EXPIRY_MS,
     });
 
+    broadcast({
+      id: crypto.randomUUID(),
+      type: 'job_posted',
+      sats: job.reward_sats + job.fee_sats,
+      direction: 'in',
+      job_id: job.id,
+      agent_id: job.requester_id,
+      timestamp: Date.now(),
+    });
+
     return NextResponse.json(job, { status: 201 });
   } catch (err) {
     return NextResponse.json(
@@ -99,9 +110,13 @@ const createJobHandler = async (req: Request): Promise<Response> => {
 
 // Price = reward_sats + fee_sats, derived from URL query param.
 // Reading req.url is safe to call twice (invoice creation + token verification).
-export const POST = withL402(createJobHandler, {
+const _postHandler = withL402(createJobHandler, {
   sats: (req: Request) => {
     const reward = Number(new URL(req.url).searchParams.get('reward_sats') ?? '0');
     return reward + Math.ceil(reward * FEE_PERCENT / 100);
   },
 });
+
+export async function POST(req: Request): Promise<Response> {
+  return _postHandler(req);
+}

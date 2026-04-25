@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { payInvoice } from '@/lib/lightning';
 import { getJob, updateJob } from '@/lib/store';
+import { broadcast } from '@/lib/feed';
 import type { Job } from '@/lib/types';
 
 interface RouteContext {
@@ -63,5 +64,16 @@ export async function POST(req: Request, ctx: RouteContext): Promise<Response> {
   }
 
   const completed = updateJob(id, { result, completed_at: Date.now() });
+
+  broadcast({
+    id: crypto.randomUUID(),
+    type: 'job_completed',
+    sats: job.reward_sats,
+    direction: 'out',
+    job_id: job.id,
+    agent_id: worker_id,
+    timestamp: Date.now(),
+  });
+
   return NextResponse.json(completed as Job, { status: 200 });
 }

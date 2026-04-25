@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { withL402 } from '@/lib/lightning';
 import { getJob, updateJob } from '@/lib/store';
+import { broadcast } from '@/lib/feed';
 import type { Job } from '@/lib/types';
 
 const DEPOSIT_SATS = Number(process.env.CLAIM_DEPOSIT_SATS ?? '2');
@@ -38,6 +39,17 @@ const claimHandler = async (req: Request, context?: unknown): Promise<Response> 
   if (!updated) {
     return NextResponse.json({ error: 'Update failed', code: 'UPDATE_FAILED' }, { status: 500 });
   }
+
+  broadcast({
+    id: crypto.randomUUID(),
+    type: 'job_claimed',
+    sats: DEPOSIT_SATS,
+    direction: 'in',
+    job_id: updated.id,
+    agent_id: worker_id,
+    timestamp: Date.now(),
+  });
+
   return NextResponse.json(updated as Job, { status: 200 });
 };
 

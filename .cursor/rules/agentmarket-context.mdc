@@ -1,0 +1,100 @@
+---
+description: AgentMarket project ground truth — stack, decisions, MDK gotchas, file ownership
+alwaysApply: true
+---
+
+# AgentMarket — persistent project context
+
+Hackathon project for MIT HackNation 2025, Track 2 (Spiral/Bitcoin). Agent-to-Agent
+Lightning Network marketplace. 12-hour build, dev quality is acceptable, demo
+quality is required.
+
+## Stack (locked)
+
+- Next.js 15 App Router + TypeScript strict + Tailwind
+- Custom L402 implementation (HMAC-signed token + BOLT11), no cloud dependency
+- Backed by MDK Agent Wallet daemons (HTTP API, NOT cloud)
+- In-memory `Map` store, HMR-safe via `globalThis` singleton
+- Anthropic Claude + Tavily (worker agent only, Phase 5+)
+
+Dark theme tokens: bg `#0F172A` cards `#1E293B` blue `#1A56DB` amber `#F59E0B`
+green `#10B981` text `#F1F5F9` muted `#94A3B8`.
+
+## Wallets currently running
+
+- **Wallet-1 (marketplace)**: `http://localhost:3456` — receives job payments and L402 deposits
+- **Wallet-2 (agent)**: `http://localhost:3457` — used by worker (and likely requester); pays L402 invoices, receives worker payouts
+- Cross-wallet payment is verified (sats actually move on mainnet)
+- A wallet **cannot pay its own invoice** (Lightning self-pay protection)
+- Second wallet was created via `USERPROFILE` override — `--config-dir` and `MDK_CONFIG_DIR` are silently ignored
+
+## File ownership
+
+All Lightning calls go through `lib/lightning.ts`. NEVER `import @moneydevkit/*`
+from anywhere else (routes, components, store, agents, escrow).
+All store mutations go through `lib/store.ts`.
+All event broadcasting goes through `lib/feed.ts`.
+
+## MDK daemon API contracts (verified, do not re-discover)
+
+CLI and HTTP have **different shapes** for the same data — do not mix them up.
+
+```
+GET  /balance  → {success, data: {balanceSats}}                       (camelCase, envelope)
+POST /receive  body: {amount_sats, description?}                      (snake_case in body!)
+               → {success, data: {invoice, paymentHash, expiresAt}}
+POST /send     body: {destination}                                    (bolt11/12, lnurl, lightning addr)
+               → {success, data: {paymentId, paymentHash, status:"pending"}}  (NO preimage)
+error envelope → {success: false, error: {code, message}}
+```
+
+The field name in `/receive` is `amount_sats` (snake_case). Other variants
+(`amount`, `sats`, `amountSats`) are silently accepted but produce amount-less
+invoices (`lnbc1...` prefix) — silent footgun.
+
+`lib/lightning.ts` adapter normalizes envelope+camelCase → flat snake_case so
+nothing else in the app sees MDK shapes.
+
+## Locked architectural decisions
+
+1. **L402 dynamic pricing** uses URL query params (`?reward_sats=N`), NOT body. Body is a stream that can't be read twice when behind a wrapper.
+2. **POST /api/jobs total cost** = `reward_sats + fee_sats` where `fee_sats = ceil(reward * MARKETPLACE_FEE_PERCENT/100)`.
+3. **Claim deposit** = `CLAIM_DEPOSIT_SATS` (default 2 sats), **always forfeit** regardless of outcome. Marketplace keeps it.
+4. **Job state machine**: `open → claimed → completed`. Lazy expiry on read: `open` past `expires_at` → `expired`; `claimed` past `claim_window` → reverts to `open` (worker forfeits deposit).
+5. **Deliver atomicity**: mark `status='completed'` synchronously BEFORE `await payInvoice`, revert to `claimed` on payment failure. Prevents double-pay across concurrent retries. Do not introduce a transient state.
+6. **Broadcast on success only**. Never on validation errors, state-guard rejections, or revert paths.
+7. **Single in-memory store**, no DB. `globalThis.__jobStore` survives HMR.
+8. **Job ID** = `crypto.randomUUID()`.
+9. **withL402** is custom (HMAC token + invoice), not from `@moneydevkit/nextjs`. Verifies signature, expiry, endpoint binding, and confirms payment on daemon.
+
+## Next.js 15 gotchas (already bitten by these)
+
+- **Dynamic route params** is `Promise<{ id: string }>`:
+  ```ts
+  export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+    const { id } = await ctx.params;
+  }
+  ```
+- **Always use `node:` prefix for core modules** in route files: `import { createHmac } from 'node:crypto'`. Webpack shadows `'crypto'` with the web global.
+- **Route handler exports must be function declarations**, not const. `export const POST = withL402(...)` silently drops on hot-reload (route becomes 404 with no error). Always wrap:
+  ```ts
+  const _handler = withL402(...);
+  export async function POST(req: Request) { return _handler(req); }
+  ```
+- **SSE routes** require `export const runtime = 'nodejs'` and `export const dynamic = 'force-dynamic'`. Use `ReadableStream` + `TextEncoder`, not Node response objects. Send `: ping\n\n` keepalive every 15s. Cleanup on `req.signal.abort`.
+
+## Karpathy guardrails (always active, see karpathy-guidelines.mdc)
+
+State assumptions before coding. Minimum code. Surgical edits. Goal-driven
+verification. No `any`. No comments narrating code.
+
+## Phase pipeline
+
+Each phase has its own brief delivered as a prompt at start of work. After
+each phase, success criteria must be **binary-verified** before the next phase
+begins. Hard-stop rule from original brief: if anything fundamental fails,
+surface clearly rather than building on top.
+
+## Tech debt log
+
+(Empty — track here as it accumulates. Format: `route/file — issue — added in phase N`.)
