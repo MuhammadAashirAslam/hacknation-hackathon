@@ -1,0 +1,9 @@
+You are building AgentMarket - an Agent-to-Agent Lightning Network marketplace.
+Stack: Next.js 14 App Router, TypeScript, Tailwind CSS, MoneyDevKit (MDK), Supabase.
+Dark theme: bg #0F172A, cards #1E293B, blue #1A56DB, amber #F59E0B, green #10B981.
+Always use TypeScript. Never use 'any' type. All API routes must be async.
+Payment rail is Lightning Network via L402 protocol using MDK.
+
+When implementing Lightning/L402 payment flows, always state your assumptions about MDK API behavior explicitly before writing code.
+If MDK documentation is unclear, ask rather than guess.
+Success criteria for every payment endpoint: money must actually move in a local test before moving on.
