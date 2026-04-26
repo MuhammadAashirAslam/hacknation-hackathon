@@ -28,17 +28,17 @@ interface JobCardProps {
 }
 
 const categoryColors = {
-  summarize: 'bg-[#1e3a8a] text-[#1A56DB]',
-  classify: 'bg-[#5b21b6] text-[#a78bfa]',
-  translate: 'bg-[#92400e] text-[#F59E0B]',
-  qa: 'bg-[#065f46] text-[#10B981]',
+  summarize: 'bg-[#ece0c5] text-[#2a1c12]',
+  classify: 'bg-[#d9c6a4] text-[#2a1c12]',
+  translate: 'bg-[#b39a78] text-[#fffbf3]',
+  qa: 'bg-[#f1e3cb] text-[#6e5e54]',
 };
 
 const statusColors = {
-  open: 'bg-[#1e3a8a] text-[#1A56DB]',
-  claimed: 'bg-[#92400e] text-[#F59E0B]',
-  completed: 'bg-[#065f46] text-[#10B981]',
-  expired: 'bg-[#7f1d1d] text-[#EF4444]',
+  open: 'bg-[#2a1c12] text-[#fffbf3]',
+  claimed: 'bg-[#b39a78] text-[#2a1c12]',
+  completed: 'bg-[#6e8e6a] text-[#fffbf3]',
+  expired: 'bg-[#b94a3a] text-[#fffbf3]',
 };
 
 function useRelativeTime(timestamp: number) {
@@ -103,9 +103,9 @@ export function JobCard({
 
   return (
     <div
-      className={`rounded-xl border border-[#334155] bg-[#1E293B] p-5 hover:border-[#475569] transition-all duration-200 ${
+      className={`rounded-xl border border-[#b39a78]/60 bg-[#fffbf3]/80 p-5 hover:border-[#2a1c12]/50 transition-all duration-200 backdrop-blur-[2px] ${
         highlighted
-          ? 'ring-2 ring-[#1A56DB] ring-offset-2 ring-offset-[#0F172A]'
+          ? 'ring-2 ring-[#2a1c12] ring-offset-2 ring-offset-[#f1e3cb]'
           : ''
       }`}
     >
@@ -121,32 +121,27 @@ export function JobCard({
         </div>
       </div>
 
-      {/* Title */}
-      <h3 className="text-lg font-semibold text-[#F1F5F9] line-clamp-2 mt-3">
+      <h3 className="text-lg font-semibold text-[#2a1c12] line-clamp-2 mt-3">
         {job.title}
       </h3>
 
-      {/* Input preview */}
-      <p className="text-sm text-[#94A3B8] font-mono truncate mt-2">
+      <p className="text-sm text-[#6e5e54] font-mono truncate mt-2">
         {inputPreview}
       </p>
 
-      {/* Divider */}
-      <div className="border-t border-[#334155] my-4" />
+      <div className="border-t border-[#b39a78]/50 my-4" />
 
-      {/* Reward block */}
       <div className="flex items-baseline gap-2 mb-4">
-        <span className="text-2xl font-bold text-[#F59E0B] font-mono">
+        <span className="text-2xl font-bold text-[#2a1c12] font-mono">
           {job.reward_sats}
         </span>
-        <span className="text-sm text-[#F59E0B] font-mono">sats</span>
-        <span className="text-xs text-[#94A3B8] font-mono">
+        <span className="text-sm text-[#2a1c12] font-mono">sats</span>
+        <span className="text-xs text-[#6e5e54] font-mono">
           + {job.fee_sats} fee
         </span>
       </div>
 
-      {/* Meta row: requester + time */}
-      <div className="flex justify-between items-center text-xs text-[#94A3B8] mb-3">
+      <div className="flex justify-between items-center text-xs text-[#6e5e54] mb-3">
         <span>by {truncatedRequesterId}</span>
         <div className="flex items-center gap-1">
           <Clock className="w-3 h-3" />
@@ -154,31 +149,29 @@ export function JobCard({
         </div>
       </div>
 
-      {/* Status-specific meta lines */}
       {job.status === 'claimed' && (
-        <div className="text-xs text-[#F59E0B] mb-3 flex items-center gap-2">
+        <div className="text-xs text-[#8a6a2a] mb-3 flex items-center gap-2">
           <span>Claimed by {truncatedWorkerId}, working…</span>
           <Loader2 className="w-3 h-3 animate-spin" />
         </div>
       )}
 
       {job.status === 'completed' && job.claimed_at && job.completed_at && (
-        <div className="text-xs text-[#10B981] mb-3">
+        <div className="text-xs text-[#3f6a3a] mb-3">
           Completed in {getDuration()} · {truncatedWorkerId}
         </div>
       )}
 
       {job.status === 'expired' && (
-        <div className="text-xs text-[#94A3B8] mb-3">
+        <div className="text-xs text-[#6e5e54] mb-3">
           Expired without a worker.
         </div>
       )}
 
-      {/* Action button */}
       {job.status === 'open' && (
         <button
           onClick={() => onClaim?.(job.id)}
-          className="w-full rounded-lg bg-[#1A56DB] text-[#F1F5F9] font-semibold text-sm py-2 hover:bg-[#1e40af] transition-colors"
+          className="w-full rounded-lg bg-[#2a1c12] text-[#fffbf3] font-semibold text-sm py-2 hover:bg-[#1a0e06] transition-colors"
         >
           {claimButtonText}
         </button>
@@ -187,7 +180,7 @@ export function JobCard({
       {job.status === 'completed' && (
         <button
           onClick={() => onViewResult?.(job.id)}
-          className="w-full rounded-lg bg-[#334155] text-[#F1F5F9] font-semibold text-sm py-2 hover:bg-[#475569] transition-colors"
+          className="w-full rounded-lg bg-[#b39a78] text-[#2a1c12] font-semibold text-sm py-2 hover:bg-[#a68b69] transition-colors"
         >
           View Result →
         </button>
@@ -198,20 +191,20 @@ export function JobCard({
 
 export function JobCardSkeleton() {
   return (
-    <div className="rounded-xl border border-[#334155] bg-[#1E293B] p-5 animate-pulse">
+    <div className="rounded-xl border border-[#b39a78]/50 bg-[#fffbf3]/70 p-5 animate-pulse">
       <div className="flex justify-between items-start mb-3">
-        <div className="h-6 w-20 rounded-full bg-[#334155]" />
-        <div className="h-6 w-16 rounded-full bg-[#334155]" />
+        <div className="h-6 w-20 rounded-full bg-[#d9c6a4]" />
+        <div className="h-6 w-16 rounded-full bg-[#d9c6a4]" />
       </div>
-      <div className="h-6 w-3/4 rounded bg-[#334155] mt-3 mb-2" />
-      <div className="h-4 w-full rounded bg-[#334155] mb-4" />
-      <div className="border-t border-[#334155] my-4" />
-      <div className="h-8 w-1/3 rounded bg-[#334155] mb-4" />
+      <div className="h-6 w-3/4 rounded bg-[#d9c6a4] mt-3 mb-2" />
+      <div className="h-4 w-full rounded bg-[#d9c6a4] mb-4" />
+      <div className="border-t border-[#b39a78]/50 my-4" />
+      <div className="h-8 w-1/3 rounded bg-[#d9c6a4] mb-4" />
       <div className="flex justify-between items-center mb-3">
-        <div className="h-4 w-1/4 rounded bg-[#334155]" />
-        <div className="h-4 w-1/4 rounded bg-[#334155]" />
+        <div className="h-4 w-1/4 rounded bg-[#d9c6a4]" />
+        <div className="h-4 w-1/4 rounded bg-[#d9c6a4]" />
       </div>
-      <div className="h-10 w-full rounded-lg bg-[#334155]" />
+      <div className="h-10 w-full rounded-lg bg-[#d9c6a4]" />
     </div>
   );
 }

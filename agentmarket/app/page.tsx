@@ -80,7 +80,7 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <main className="bg-[#0F172A] text-[#F1F5F9] min-h-screen">
+    <main className="text-[#2a1c12] min-h-screen">
       <Nav />
       <Hero stats={stats} />
       <HowItWorks />
