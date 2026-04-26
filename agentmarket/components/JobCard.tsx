@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Clock, Loader2 } from 'lucide-react';
+import { Clock, Loader2, Bot, GitBranch, CornerDownRight } from 'lucide-react';
 
 interface Job {
   id: string;
@@ -12,12 +12,15 @@ interface Job {
   fee_sats: number;
   status: 'open' | 'claimed' | 'completed' | 'expired';
   requester_id: string;
+  assigned_worker_id: string | null;
   worker_id: string | null;
   result: string | null;
   created_at: number;
   claimed_at: number | null;
   completed_at: number | null;
   expires_at: number;
+  parent_job_id: string | null;
+  is_decomposed: boolean;
 }
 
 interface JobCardProps {
@@ -25,6 +28,10 @@ interface JobCardProps {
   onClaim?: (jobId: string) => void;
   onViewResult?: (jobId: string) => void;
   highlighted?: boolean;
+  // For parent (decomposed) jobs, show how many of their children have
+  // already completed. Optional — caller computes from full job list.
+  childrenCompleted?: number;
+  childrenTotal?: number;
 }
 
 const categoryColors = {
@@ -77,6 +84,8 @@ export function JobCard({
   onClaim,
   onViewResult,
   highlighted,
+  childrenCompleted,
+  childrenTotal,
 }: JobCardProps) {
   const relativeTime = useRelativeTime(job.created_at);
   const truncatedRequesterId = job.requester_id.length > 12 
@@ -85,6 +94,9 @@ export function JobCard({
   const truncatedWorkerId = job.worker_id && job.worker_id.length > 12
     ? `${job.worker_id.slice(0, 12)}…`
     : job.worker_id;
+  const truncatedAssignedId = job.assigned_worker_id && job.assigned_worker_id.length > 16
+    ? `${job.assigned_worker_id.slice(0, 16)}…`
+    : job.assigned_worker_id;
 
   const inputPreview = job.input.length > 80
     ? `${job.input.slice(0, 80)}…`
@@ -121,6 +133,13 @@ export function JobCard({
         </div>
       </div>
 
+      {job.parent_job_id !== null && (
+        <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-[#8a6a2a] mt-1">
+          <CornerDownRight className="w-3 h-3" />
+          <span>sub-task</span>
+        </div>
+      )}
+
       <h3 className="text-lg font-semibold text-[#2a1c12] line-clamp-2 mt-3">
         {job.title}
       </h3>
@@ -128,6 +147,18 @@ export function JobCard({
       <p className="text-sm text-[#6e5e54] font-mono truncate mt-2">
         {inputPreview}
       </p>
+
+      {job.is_decomposed && (
+        <div className="mt-3 flex items-center gap-2 rounded-md border border-[#8a6a2a]/40 bg-[#fffbf3]/80 px-2.5 py-1.5 text-xs text-[#2a1c12]">
+          <GitBranch className="w-3.5 h-3.5 text-[#8a6a2a]" />
+          <span>
+            Decomposed
+            {typeof childrenCompleted === 'number' && typeof childrenTotal === 'number'
+              ? ` · ${childrenCompleted}/${childrenTotal} sub-tasks done`
+              : ''}
+          </span>
+        </div>
+      )}
 
       <div className="border-t border-[#b39a78]/50 my-4" />
 
@@ -149,6 +180,13 @@ export function JobCard({
         </div>
       </div>
 
+      {job.status === 'open' && truncatedAssignedId && (
+        <div className="text-xs text-[#2a1c12] mb-3 flex items-center gap-1.5 font-medium">
+          <Bot className="w-3 h-3" />
+          <span>Assigned to <span className="font-mono">{truncatedAssignedId}</span></span>
+        </div>
+      )}
+
       {job.status === 'claimed' && (
         <div className="text-xs text-[#8a6a2a] mb-3 flex items-center gap-2">
           <span>Claimed by {truncatedWorkerId}, working…</span>
@@ -168,7 +206,13 @@ export function JobCard({
         </div>
       )}
 
-      {job.status === 'open' && (
+      {job.status === 'open' && job.is_decomposed && (
+        <div className="w-full rounded-lg border border-[#8a6a2a]/40 bg-[#fffbf3]/60 text-center text-xs text-[#6e5e54] py-2 italic">
+          Sub-tasks running…
+        </div>
+      )}
+
+      {job.status === 'open' && !job.is_decomposed && (
         <button
           onClick={() => onClaim?.(job.id)}
           className="w-full rounded-lg bg-[#2a1c12] text-[#fffbf3] font-semibold text-sm py-2 hover:bg-[#1a0e06] transition-colors"

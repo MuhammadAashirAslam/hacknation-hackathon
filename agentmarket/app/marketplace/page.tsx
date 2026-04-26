@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { JobCard } from '@/components/JobCard';
 import { TransactionFeed, type Transaction } from '@/components/TransactionFeed';
 import { WalletStatus } from '@/components/WalletStatus';
+import { AssessmentList } from '@/components/AssessmentList';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -35,12 +36,15 @@ interface Job {
   fee_sats: number;
   status: 'open' | 'claimed' | 'completed' | 'expired';
   requester_id: string;
+  assigned_worker_id: string | null;
   worker_id: string | null;
   result: string | null;
   created_at: number;
   claimed_at: number | null;
   completed_at: number | null;
   expires_at: number;
+  parent_job_id: string | null;
+  is_decomposed: boolean;
 }
 
 interface Stats {
@@ -114,6 +118,21 @@ export default function MarketplacePage() {
     if (categoryFilter !== 'all' && job.category !== categoryFilter) return false;
     return true;
   });
+
+  // Per-parent child progress (computed once over the full job list, not the
+  // filtered view, so progress reflects reality even when filters hide kids).
+  const childCountsByParent = jobs.reduce<Record<string, { done: number; total: number }>>(
+    (acc, j) => {
+      if (j.parent_job_id) {
+        const slot = acc[j.parent_job_id] ?? { done: 0, total: 0 };
+        slot.total += 1;
+        if (j.status === 'completed') slot.done += 1;
+        acc[j.parent_job_id] = slot;
+      }
+      return acc;
+    },
+    {},
+  );
 
   const fetchJobs = useCallback(async () => {
     const res = await fetch('/api/jobs');
@@ -380,13 +399,18 @@ export default function MarketplacePage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredJobs.map((job) => (
-                  <JobCard
-                    key={job.id}
-                    job={job}
-                    onViewResult={(jobId) => setResultJobId(jobId)}
-                  />
-                ))}
+                {filteredJobs.map((job) => {
+                  const counts = childCountsByParent[job.id];
+                  return (
+                    <JobCard
+                      key={job.id}
+                      job={job}
+                      onViewResult={(jobId) => setResultJobId(jobId)}
+                      childrenCompleted={counts?.done}
+                      childrenTotal={counts?.total}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>
@@ -540,23 +564,61 @@ export default function MarketplacePage() {
       </Dialog>
 
       <Dialog open={resultJobId !== null} onOpenChange={(open) => !open && setResultJobId(null)}>
-        <DialogContent className="sm:max-w-2xl bg-card border-border">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-card border-border">
           <DialogHeader>
-            <DialogTitle className="text-foreground">Job Result</DialogTitle>
+            <DialogTitle className="text-foreground">
+              {resultJob?.is_decomposed ? 'Aggregated Result' : 'Job Result'}
+            </DialogTitle>
             <DialogDescription className="text-muted-foreground">
               {resultJob ? `${resultJob.title} (${resultJob.category})` : 'Completed job result'}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="text-xs text-muted-foreground">
-              {resultJob?.worker_id ? `Completed by ${resultJob.worker_id}` : 'Worker unknown'}
+              {resultJob?.is_decomposed
+                ? `Synthesized from ${childCountsByParent[resultJob.id]?.total ?? 0} sub-tasks`
+                : resultJob?.worker_id
+                  ? `Completed by ${resultJob.worker_id}`
+                  : 'Worker unknown'}
             </div>
-            <div className="max-h-[50vh] overflow-y-auto rounded-md border border-border bg-background p-3">
+            <div className="max-h-[40vh] overflow-y-auto rounded-md border border-border bg-background p-3">
               <pre className="whitespace-pre-wrap break-words text-sm text-foreground font-mono">
                 {resultJob?.result ?? 'No result available for this job yet.'}
               </pre>
             </div>
+
+            {resultJob?.is_decomposed && (
+              <div className="space-y-2">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Sub-tasks
+                </div>
+                {jobs
+                  .filter((j) => j.parent_job_id === resultJob.id)
+                  .sort((a, b) => a.created_at - b.created_at)
+                  .map((child) => (
+                    <div
+                      key={child.id}
+                      className="rounded-md border border-border bg-background p-3"
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="text-sm font-medium text-foreground">
+                          {child.title}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          {child.status}
+                          {child.worker_id ? ` · ${child.worker_id}` : ''}
+                        </div>
+                      </div>
+                      <pre className="whitespace-pre-wrap break-words text-xs text-foreground/90 font-mono max-h-40 overflow-y-auto">
+                        {child.result ?? 'No result yet…'}
+                      </pre>
+                    </div>
+                  ))}
+              </div>
+            )}
+
+            <AssessmentList jobId={resultJobId} />
           </div>
         </DialogContent>
       </Dialog>

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "worker": "node --env-file=.env.local agents/worker.js",
+    "fleet": "node --env-file=.env.local agents/run-fleet.js",
     "requester": "node --env-file=.env.local agents/requester.js"
   },
   "dependencies": {

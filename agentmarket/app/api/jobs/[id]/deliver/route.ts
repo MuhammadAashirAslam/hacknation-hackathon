@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { payInvoice } from '@/lib/lightning';
-import { getJob, updateJob } from '@/lib/store';
+import { getJob, listChildren, updateJob } from '@/lib/store';
 import { broadcast } from '@/lib/feed';
+import { aggregateResults } from '@/lib/llm';
 import type { Job } from '@/lib/types';
 
 interface RouteContext {
@@ -77,6 +78,55 @@ export async function POST(req: Request, ctx: RouteContext): Promise<Response> {
     agent_id: worker_id,
     timestamp: Date.now(),
   });
+
+  // ── Aggregation trigger ──────────────────────────────────────────────────
+  // If this was a child of a decomposed parent and all siblings are now
+  // completed, synthesize the parent's final answer. Run synchronously so the
+  // UI sees the parent transition before the deliver call returns; the LLM
+  // call adds ~1-2s but only on the LAST sibling.
+  if (completed && completed.parent_job_id) {
+    const parentId = completed.parent_job_id;
+    const parent = getJob(parentId);
+    if (parent && parent.is_decomposed && parent.status !== 'completed') {
+      const siblings = listChildren(parentId);
+      const allDone =
+        siblings.length > 0 &&
+        siblings.every((s) => s.status === 'completed' && s.result);
+      if (allDone) {
+        try {
+          const aggregated = await aggregateResults(
+            { title: parent.title, input: parent.input, category: parent.category },
+            siblings.map((s) => ({ title: s.title, result: s.result ?? '' })),
+          );
+          const now = Date.now();
+          updateJob(parentId, {
+            status: 'completed',
+            result: aggregated,
+            completed_at: now,
+            // Use the last delivering worker as the parent's worker_id so the
+            // result modal can show "Completed by …" without inventing fields.
+            worker_id,
+            claimed_at: parent.claimed_at ?? now,
+          });
+          broadcast({
+            id: crypto.randomUUID(),
+            type: 'job_completed',
+            sats: parent.reward_sats,
+            direction: 'out',
+            job_id: parentId,
+            agent_id: worker_id,
+            timestamp: now,
+          });
+        } catch (err) {
+          console.error(
+            `[deliver] aggregation failed for parent ${parentId}: ${(err as Error).message}`,
+          );
+          // Best-effort: leave parent in 'open' state. UI can still render
+          // children individually. Demo isn't blocked.
+        }
+      }
+    }
+  }
 
   return NextResponse.json(completed as Job, { status: 200 });
 }

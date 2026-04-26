@@ -1,8 +1,17 @@
-import type { Job, JobStatus } from './types';
+import type { Assessment, Job, JobStatus } from './types';
 
-// HMR-safe singleton: survives Next.js hot reloads without losing in-memory state.
-const g = globalThis as unknown as { __jobStore?: Map<string, Job> };
-const store: Map<string, Job> = g.__jobStore ?? (g.__jobStore = new Map<string, Job>());
+// HMR-safe singletons: survive Next.js hot reloads without losing in-memory state.
+const g = globalThis as unknown as {
+  __jobStore?: Map<string, Job>;
+  __assessmentStore?: Map<string, Assessment[]>;
+  __workerQueue?: string[];
+};
+const store: Map<string, Job> =
+  g.__jobStore ?? (g.__jobStore = new Map<string, Job>());
+const assessmentsByJob: Map<string, Assessment[]> =
+  g.__assessmentStore ?? (g.__assessmentStore = new Map<string, Assessment[]>());
+const workerQueue: string[] =
+  g.__workerQueue ?? (g.__workerQueue = []);
 
 export interface ListJobsFilter {
   status?: JobStatus;
@@ -50,6 +59,14 @@ export function listJobs(filter?: ListJobsFilter): Job[] {
   });
 }
 
+// Returns all child jobs of a given parent, in creation order.
+export function listChildren(parentId: string): Job[] {
+  return Array.from(store.values())
+    .filter((j) => j.parent_job_id === parentId)
+    .sort((a, b) => a.created_at - b.created_at)
+    .map(applyExpiry);
+}
+
 export function updateJob(id: string, patch: Partial<Job>): Job | undefined {
   const job = store.get(id);
   if (!job) return undefined;
@@ -60,4 +77,43 @@ export function updateJob(id: string, patch: Partial<Job>): Job | undefined {
 
 export function _resetStore(): void {
   store.clear();
+  assessmentsByJob.clear();
+  workerQueue.length = 0;
+}
+
+// ── Worker queue (round-robin assignment) ────────────────────────────────────
+
+export function registerWorker(workerId: string): { queue: string[]; added: boolean } {
+  if (workerQueue.includes(workerId)) {
+    return { queue: [...workerQueue], added: false };
+  }
+  workerQueue.push(workerId);
+  return { queue: [...workerQueue], added: true };
+}
+
+// Pops the head of the queue and pushes it to the tail. Returns the assigned
+// worker id or null if no workers are registered.
+export function rotateAssignWorker(): string | null {
+  if (workerQueue.length === 0) return null;
+  const next = workerQueue.shift() as string;
+  workerQueue.push(next);
+  return next;
+}
+
+export function listRegisteredWorkers(): string[] {
+  return [...workerQueue];
+}
+
+// ── Assessments ──────────────────────────────────────────────────────────────
+
+export function addAssessment(a: Assessment): void {
+  const list = assessmentsByJob.get(a.job_id) ?? [];
+  // Idempotency: one assessment per (job, worker).
+  if (list.some((existing) => existing.worker_id === a.worker_id)) return;
+  list.push(a);
+  assessmentsByJob.set(a.job_id, list);
+}
+
+export function listAssessments(jobId: string): Assessment[] {
+  return [...(assessmentsByJob.get(jobId) ?? [])];
 }

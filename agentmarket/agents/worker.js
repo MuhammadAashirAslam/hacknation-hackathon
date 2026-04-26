@@ -31,15 +31,37 @@ const AGENT_WALLET_URL = (
     "http://localhost:3457"
 ).replace(/\/+$/, "");
 
-const MODAL_API_KEY = process.env.MODAL_API_KEY || "";
-const MODAL_BASE_URL = (
-    process.env.MODAL_BASE_URL || "https://api.us-west-2.modal.direct/v1"
+// LLM_PROVIDER selects the brain: 'groq' (default) | 'gemini' | 'glm'.
+// Each provider falls back to Groq on missing key so the fleet always boots.
+const LLM_PROVIDER = (process.env.LLM_PROVIDER || "groq").toLowerCase();
+const LLM_MODEL = process.env.LLM_MODEL || "";
+
+// Groq config (existing path; MODAL_* names retained for backward compat).
+const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.MODAL_API_KEY || "";
+const GROQ_BASE_URL = (
+    process.env.GROQ_BASE_URL ||
+    process.env.MODAL_BASE_URL ||
+    "https://api.groq.com/openai/v1"
 ).replace(/\/+$/, "");
-const MODAL_MODEL = process.env.MODAL_MODEL || "zai-org/GLM-5.1-FP8";
-// GLM-5.1-FP8 is a reasoning model: it spends `completion_tokens` on
-// `reasoning_content` (chain-of-thought) BEFORE producing `content`. Budget
-// must cover both. 8192 leaves ~6k for the answer after typical reasoning.
-const MODAL_MAX_TOKENS = Number(process.env.MODAL_MAX_TOKENS || "8192");
+const GROQ_DEFAULT_MODEL =
+    process.env.MODAL_MODEL || "llama-3.3-70b-versatile";
+
+// Gemini config. Default model intentionally uses the bare name (no "-latest"
+// suffix) — Google deprecated several aliases. gemini-1.5-flash is widely
+// free-tier accessible. Override via GEMINI_MODEL env if you have access to
+// gemini-2.0-flash etc.
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+const GEMINI_DEFAULT_MODEL =
+    process.env.GEMINI_MODEL || "gemini-1.5-flash";
+
+// GLM config (uses Modal endpoint per existing setup).
+const GLM_API_KEY = process.env.GLM_API_KEY || "";
+const GLM_BASE_URL = (
+    process.env.GLM_BASE_URL || "https://api.us-west-2.modal.direct/v1"
+).replace(/\/+$/, "");
+const GLM_DEFAULT_MODEL = process.env.GLM_MODEL || "zai-org/GLM-5.1-FP8";
+
+const MODAL_MAX_TOKENS = Number(process.env.MODAL_MAX_TOKENS || "4096");
 
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY || "";
 
@@ -167,6 +189,43 @@ async function tavilyExtract(url) {
     }
 }
 
+/**
+ * Lightweight Tavily search for non-URL inputs. Returns top result content
+ * snippet, or null on failure.
+ * @param {string} query
+ * @returns {Promise<{title: string, url: string, snippet: string}|null>}
+ */
+async function tavilySearch(query) {
+    if (!TAVILY_API_KEY) return null;
+    try {
+        const res = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                api_key: TAVILY_API_KEY,
+                query: query.slice(0, 400),
+                search_depth: "basic",
+                max_results: 3,
+            }),
+        });
+        if (!res.ok) return null;
+        const body = await res.json();
+        const first = body && body.results && body.results[0];
+        if (!first) return null;
+        return {
+            title: typeof first.title === "string" ? first.title : "",
+            url: typeof first.url === "string" ? first.url : "",
+            snippet:
+                typeof first.content === "string"
+                    ? first.content.slice(0, 280)
+                    : "",
+        };
+    } catch (err) {
+        log("tavily_search_error", /** @type {Error} */ (err).message);
+        return null;
+    }
+}
+
 /* ────────────────────────────── Modal LLM ───────────────────────────────── */
 
 /**
@@ -207,28 +266,26 @@ function buildPrompt(category, input, extracted) {
 }
 
 /**
- * @param {string} prompt
+ * Calls a Groq-compatible OpenAI chat/completions endpoint.
+ * @param {string} prompt @param {string} model @param {string} apiKey @param {string} baseUrl
  * @returns {Promise<string>}
  */
-async function callModal(prompt) {
-    if (!MODAL_API_KEY) {
-        throw new Error("MODAL_API_KEY is not set — cannot run inference");
-    }
-    const res = await fetch(`${MODAL_BASE_URL}/chat/completions`, {
+async function callOpenAICompat(prompt, model, apiKey, baseUrl) {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${MODAL_API_KEY}`,
+            Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-            model: MODAL_MODEL,
+            model,
             messages: [{ role: "user", content: prompt }],
             max_tokens: MODAL_MAX_TOKENS,
         }),
     });
     if (!res.ok) {
         const text = await res.text().catch(() => "");
-        throw new Error(`Modal HTTP ${res.status}: ${text.slice(0, 500)}`);
+        throw new Error(`LLM HTTP ${res.status}: ${text.slice(0, 500)}`);
     }
     const body = await res.json();
     const choice = body && body.choices && body.choices[0];
@@ -240,19 +297,96 @@ async function callModal(prompt) {
     if (typeof content === "string" && content.trim().length > 0) {
         return content.trim();
     }
-    // GLM-5.1 burned the whole completion budget on reasoning. Surface the
-    // reasoning as the answer rather than failing — the demo keeps flowing,
-    // and the user sees the model's thinking. Increase MODAL_MAX_TOKENS to fix.
     if (typeof reasoning === "string" && reasoning.trim().length > 0) {
         log(
             "llm_truncated",
-            `finish=${finish} — falling back to reasoning_content (raise MODAL_MAX_TOKENS)`,
+            `finish=${finish} — falling back to reasoning_content`,
         );
-        return `[truncated — increase MODAL_MAX_TOKENS]\n\n${reasoning.trim()}`;
+        return `[truncated — raise MODAL_MAX_TOKENS]\n\n${reasoning.trim()}`;
     }
     throw new Error(
-        `Modal returned no content (finish=${finish}): ${JSON.stringify(body).slice(0, 400)}`,
+        `LLM returned no content (finish=${finish}): ${JSON.stringify(body).slice(0, 400)}`,
     );
+}
+
+/**
+ * Calls Google Gemini's generateContent endpoint.
+ * @param {string} prompt @param {string} model @param {string} apiKey
+ * @returns {Promise<string>}
+ */
+async function callGemini(prompt, model, apiKey) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+        model,
+    )}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: MODAL_MAX_TOKENS },
+        }),
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`Gemini HTTP ${res.status}: ${text.slice(0, 500)}`);
+    }
+    const body = await res.json();
+    const cand = body && body.candidates && body.candidates[0];
+    const parts = cand && cand.content && cand.content.parts;
+    const text =
+        Array.isArray(parts) && parts.length > 0 && typeof parts[0].text === "string"
+            ? parts[0].text
+            : "";
+    if (text.trim().length === 0) {
+        throw new Error(
+            `Gemini returned no text: ${JSON.stringify(body).slice(0, 400)}`,
+        );
+    }
+    return text.trim();
+}
+
+/**
+ * Provider-agnostic LLM call with automatic Groq fallback when the configured
+ * provider is missing credentials. Returns the resolved provider+model used.
+ * @param {string} prompt
+ * @returns {Promise<{ text: string, provider_used: string, model_used: string }>}
+ */
+async function callLLM(prompt) {
+    const wantedProvider = LLM_PROVIDER;
+
+    if (wantedProvider === "gemini" && GEMINI_API_KEY) {
+        const model = LLM_MODEL || GEMINI_DEFAULT_MODEL;
+        const text = await callGemini(prompt, model, GEMINI_API_KEY);
+        return { text, provider_used: "gemini", model_used: model };
+    }
+
+    if (wantedProvider === "glm" && GLM_API_KEY) {
+        const model = LLM_MODEL || GLM_DEFAULT_MODEL;
+        const text = await callOpenAICompat(prompt, model, GLM_API_KEY, GLM_BASE_URL);
+        return { text, provider_used: "glm", model_used: model };
+    }
+
+    // Groq path or fallback.
+    if (!GROQ_API_KEY) {
+        throw new Error(
+            "GROQ_API_KEY (or MODAL_API_KEY) is not set — cannot run inference",
+        );
+    }
+    if (wantedProvider !== "groq") {
+        log(
+            "llm_fallback",
+            `provider=${wantedProvider} key missing → falling back to groq`,
+        );
+    }
+    // When falling back across providers, LLM_MODEL is from the original
+    // provider (e.g. "gemini-1.5-flash-latest") and won't exist on Groq. Only
+    // honor LLM_MODEL when the wanted provider was already groq.
+    const model =
+        wantedProvider === "groq" && LLM_MODEL
+            ? LLM_MODEL
+            : GROQ_DEFAULT_MODEL;
+    const text = await callOpenAICompat(prompt, model, GROQ_API_KEY, GROQ_BASE_URL);
+    return { text, provider_used: "groq", model_used: model };
 }
 
 /* ─────────────────────────── Marketplace HTTP ───────────────────────────── */
@@ -265,14 +399,65 @@ async function listJobs() {
 }
 
 /**
- * Full L402 dance against /api/jobs/:id/claim. Returns the claimed Job.
+ * Register this worker with the marketplace queue. Idempotent: server returns
+ * 200 if already registered, 201 if newly added.
+ * @returns {Promise<{queue: string[], added: boolean}>}
+ */
+async function registerWithMarketplace() {
+    const res = await fetch(`${MARKETPLACE_URL}/api/workers/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ worker_id: WORKER_ID }),
+    });
+    if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        throw new Error(
+            `register failed ${res.status}: ${detail.slice(0, 200)}`,
+        );
+    }
+    return res.json();
+}
+
+/**
+ * POST our Tavily-derived assessment for a job. Returns the saved Assessment.
+ * Idempotent server-side per (job, worker).
  * @param {string} jobId
+ * @param {string} note
+ */
+async function postAssessment(jobId, note) {
+    const res = await fetch(
+        `${MARKETPLACE_URL}/api/jobs/${jobId}/assess`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ worker_id: WORKER_ID, note }),
+        },
+    );
+    if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        throw new Error(
+            `assess failed ${res.status}: ${detail.slice(0, 200)}`,
+        );
+    }
+    return res.json();
+}
+
+/**
+ * Claim a job. Falls back to the free path when:
+ *   - DEMO_FREE_JOBS is set, OR
+ *   - the job is a decomposed child (the marketplace already collected
+ *     payment from the user when posting the parent).
+ * @param {Job} job
  * @returns {Promise<Job>}
  */
-async function claimJobWithL402(jobId) {
+async function claimJobWithL402(job) {
+    const jobId = job.id;
     const url = `${MARKETPLACE_URL}/api/jobs/${jobId}/claim`;
     const body = JSON.stringify({ worker_id: WORKER_ID });
-    if (DEMO_FREE_JOBS) {
+    const isChild =
+        /** @type {any} */ (job).parent_job_id !== null &&
+        /** @type {any} */ (job).parent_job_id !== undefined;
+    if (DEMO_FREE_JOBS || isChild) {
         const freeClaim = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -374,6 +559,43 @@ async function deliverJob(jobId, result, payoutInvoice) {
 
 /** Tracks IDs we've already attempted (or are processing) this run. */
 const seen = new Set();
+/** Tracks IDs we've already submitted an assessment for this run. */
+const assessed = new Set();
+
+/**
+ * Run a quick Tavily lookup so the user sees real research evidence per agent,
+ * then post the note back to the marketplace. Failures fall back to a generic
+ * note so the demo still shows something for every agent.
+ * @param {Job} job
+ */
+async function assessJob(job) {
+    let note;
+    if (isUrl(job.input)) {
+        const extract = await tavilyExtract(job.input);
+        if (extract && extract.length > 0) {
+            const preview = extract.slice(0, 200).replace(/\s+/g, " ").trim();
+            note = `Tavily extracted ${extract.length} chars from ${job.input}. Preview: ${preview}…`;
+        } else {
+            note = `Tavily extract failed for ${job.input}; will fall back to raw input on delivery.`;
+        }
+    } else {
+        const hit = await tavilySearch(job.input);
+        if (hit) {
+            note = `Tavily top hit: "${hit.title}" (${hit.url}). Snippet: ${hit.snippet}`;
+        } else {
+            note = `Plain-text ${job.category} input (${job.input.length} chars). No external lookup needed.`;
+        }
+    }
+    try {
+        await postAssessment(job.id, note);
+        log("assessed", `${job.id.slice(0, 8)} note=${note.slice(0, 60)}…`);
+    } catch (err) {
+        log(
+            "assess_error",
+            `${job.id.slice(0, 8)}: ${/** @type {Error} */ (err).message}`,
+        );
+    }
+}
 
 /** @param {Job} job */
 async function processJob(job) {
@@ -382,7 +604,7 @@ async function processJob(job) {
         `${job.id.slice(0, 8)}… category=${job.category} reward=${job.reward_sats}`,
     );
 
-    await claimJobWithL402(job.id);
+    await claimJobWithL402(job);
     log("claimed", job.id.slice(0, 8));
 
     let extracted = null;
@@ -396,9 +618,13 @@ async function processJob(job) {
     }
 
     const prompt = buildPrompt(job.category, job.input, extracted);
-    log("llm_call", `model=${MODAL_MODEL} prompt_chars=${prompt.length}`);
-    const result = await callModal(prompt);
-    log("llm_result", `${result.length} chars`);
+    log("llm_call", `provider=${LLM_PROVIDER} prompt_chars=${prompt.length}`);
+    const llm = await callLLM(prompt);
+    log(
+        "llm_result",
+        `provider=${llm.provider_used} model=${llm.model_used} chars=${llm.text.length}`,
+    );
+    const result = llm.text;
 
     let payoutInvoice = "lnbc1demofreemode";
     if (!DEMO_FREE_JOBS) {
@@ -423,22 +649,47 @@ async function tick() {
         return;
     }
 
-    const candidates = jobs.filter(
+    const openInCategory = jobs.filter(
         (j) =>
             j.status === "open" &&
             WORKER_CATEGORIES.includes(j.category) &&
-            !seen.has(j.id),
+            // Decomposed parents are orchestration nodes — they're not real
+            // work, the children are. Skip them in both assess + claim phases.
+            /** @type {any} */ (j).is_decomposed !== true,
     );
-    if (candidates.length === 0) return;
 
-    // Oldest first — fairer competition with other workers.
-    candidates.sort(
+    // Phase 1: assessment — every worker assesses every job they see, once.
+    const toAssess = openInCategory.filter((j) => !assessed.has(j.id));
+    for (const job of toAssess) {
+        assessed.add(job.id);
+        // Fire-and-forget: don't block the processing phase on Tavily latency.
+        assessJob(job).catch((err) => {
+            log(
+                "assess_unhandled",
+                `${job.id.slice(0, 8)}: ${/** @type {Error} */ (err).message}`,
+            );
+        });
+    }
+
+    // Phase 2: processing — only jobs assigned to this worker (or unassigned,
+    // for legacy single-worker mode where no fleet has registered).
+    const mine = openInCategory.filter((j) => {
+        const assigned = /** @type {any} */ (j).assigned_worker_id;
+        return (
+            !seen.has(j.id) &&
+            (assigned === WORKER_ID || assigned === null || assigned === undefined)
+        );
+    });
+    if (mine.length === 0) return;
+
+    // Oldest first.
+    mine.sort(
         (a, b) =>
             /** @type {any} */ (a).created_at -
             /** @type {any} */ (b).created_at,
     );
 
-    const job = candidates[0];
+    const job = mine[0];
     seen.add(job.id);
 
     try {
@@ -455,11 +706,33 @@ async function tick() {
 async function main() {
     log(
         "startup",
-        `marketplace=${MARKETPLACE_URL} agent_wallet=${AGENT_WALLET_URL} demo_free_jobs=${DEMO_FREE_JOBS} categories=[${WORKER_CATEGORIES.join(",")}]`,
+        `marketplace=${MARKETPLACE_URL} agent_wallet=${AGENT_WALLET_URL} demo_free_jobs=${DEMO_FREE_JOBS} provider=${LLM_PROVIDER} categories=[${WORKER_CATEGORIES.join(",")}]`,
     );
-    if (!MODAL_API_KEY) {
-        console.error("[fatal] MODAL_API_KEY is not set");
+    if (!GROQ_API_KEY && LLM_PROVIDER === "groq") {
+        console.error("[fatal] GROQ_API_KEY (or MODAL_API_KEY) is not set");
         process.exit(1);
+    }
+    if (!GROQ_API_KEY && LLM_PROVIDER !== "groq") {
+        log(
+            "key_warn",
+            "GROQ_API_KEY is not set — provider fallback will fail if your provider's key is also missing",
+        );
+    }
+
+    try {
+        const reg = await registerWithMarketplace();
+        log(
+            "registered",
+            `added=${reg.added} queue=[${(reg.queue || []).join(",")}]`,
+        );
+    } catch (err) {
+        // Registration is best-effort: marketplace may be slow to boot. The
+        // worker's processing-phase filter falls back to unassigned jobs, so
+        // single-worker dev still functions even if registration fails here.
+        log(
+            "register_warn",
+            /** @type {Error} */ (err).message,
+        );
     }
 
     let running = true;

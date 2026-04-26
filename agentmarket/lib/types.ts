@@ -11,12 +11,32 @@ export interface Job {
   fee_sats: number;
   status: JobStatus;
   requester_id: string;
+  // Round-robin assignment from the worker queue at job creation. null = open
+  // to any registered worker (legacy / no fleet running).
+  assigned_worker_id: string | null;
   worker_id: string | null;
   result: string | null;
   created_at: number;
   claimed_at: number | null;
   completed_at: number | null;
   expires_at: number;
+  // Decomposition: when set, this is a child job whose result will be folded
+  // into its parent on completion. null on standalone jobs and on parents.
+  parent_job_id: string | null;
+  // True on a parent that has been decomposed into children. Workers must
+  // skip these (they're orchestration nodes, not leaf work).
+  is_decomposed: boolean;
+}
+
+export interface Assessment {
+  id: string;
+  job_id: string;
+  worker_id: string;
+  // Short Tavily-derived note about the job. Free-form, capped to ~400 chars.
+  note: string;
+  // Whether this worker is the assigned one (UI-side highlighting).
+  assigned: boolean;
+  created_at: number;
 }
 
 export type TransactionType = 'job_posted' | 'job_claimed' | 'job_completed';

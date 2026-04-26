@@ -35,6 +35,15 @@ const claimHandler = async (req: Request, context?: unknown): Promise<Response> 
   if (job.status === 'expired') {
     return NextResponse.json({ error: 'Job expired', code: 'expired' }, { status: 410 });
   }
+  // Round-robin enforcement: when the marketplace has assigned the job to a
+  // specific worker (via the queue), only that worker may claim. If no worker
+  // is assigned (no fleet registered, single-worker dev), fall through.
+  if (job.assigned_worker_id !== null && job.assigned_worker_id !== worker_id) {
+    return NextResponse.json(
+      { error: 'Job assigned to a different worker', code: 'not_assigned' },
+      { status: 403 },
+    );
+  }
 
   const updated = updateJob(id, { status: 'claimed', worker_id, claimed_at: Date.now() });
   if (!updated) {
@@ -58,5 +67,15 @@ const _handler = withL402(claimHandler, { sats: DEPOSIT_SATS });
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
   if (FREE_MODE) return claimHandler(req, ctx);
+
+  // Decomposed children skip L402 — they're orchestrated by the marketplace
+  // and the user already paid for the parent. Real money still moves on
+  // delivery (marketplace pays out child.reward_sats to the worker).
+  const { id } = await ctx.params;
+  const peek = getJob(id);
+  if (peek && peek.parent_job_id !== null) {
+    return claimHandler(req, { params: Promise.resolve({ id }) });
+  }
+
   return _handler(req, ctx);
 }

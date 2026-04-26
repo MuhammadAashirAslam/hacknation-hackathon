@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { payInvoiceAsAgent } from '@/lib/lightning';
-import { createJob } from '@/lib/store';
+import { createJob, rotateAssignWorker } from '@/lib/store';
 import { broadcast } from '@/lib/feed';
 import type { JobCategory } from '@/lib/types';
 
@@ -63,12 +63,15 @@ export async function POST(req: Request): Promise<Response> {
       fee_sats: feeSats,
       status: 'open',
       requester_id: createBody.requester_id,
+      assigned_worker_id: rotateAssignWorker(),
       worker_id: null,
       result: null,
       created_at: now,
       claimed_at: null,
       completed_at: null,
       expires_at: now + EXPIRY_MS,
+      parent_job_id: null,
+      is_decomposed: false,
     });
     broadcast({
       id: crypto.randomUUID(),
