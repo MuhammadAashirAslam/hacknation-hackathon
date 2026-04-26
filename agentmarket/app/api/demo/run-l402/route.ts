@@ -143,36 +143,51 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const replay = await fetch(targetUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `L402 ${challengeMacaroon}:${challengePaymentHash}`,
-    },
-    body: JSON.stringify(createBody),
-  });
-  const replayBody = await replay.json().catch(() => ({}));
+  // Lightning settlement lag: the agent wallet has dispatched the payment,
+  // but the marketplace daemon needs a moment to observe the inbound payment
+  // before /api/jobs's L402 verify will pass. Retry until 200 (or non-402).
+  // 12 × 2.5s = 30s window — same pattern as /api/demo/post-job.
+  const maxReplays = 12;
+  let replayBody: Record<string, unknown> = {};
+  let lastStatus = 0;
+  for (let i = 0; i < maxReplays; i++) {
+    await new Promise((r) => setTimeout(r, 2500));
+    const replay = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `L402 ${challengeMacaroon}:${challengePaymentHash}`,
+      },
+      body: JSON.stringify(createBody),
+    });
+    replayBody = (await replay.json().catch(() => ({}))) as Record<string, unknown>;
+    lastStatus = replay.status;
+    if (replay.ok) {
+      steps.push({
+        title: 'Retry with Proof of Payment',
+        response: `HTTP ${replay.status}\n\n${JSON.stringify(replayBody, null, 2)}`,
+      });
+      return NextResponse.json({
+        ok: true,
+        steps,
+        created_job_id: typeof replayBody.id === 'string' ? replayBody.id : null,
+        payment_hash: challengePaymentHash,
+      });
+    }
+    if (replay.status !== 402) break;
+  }
 
   steps.push({
     title: 'Retry with Proof of Payment',
-    response: `HTTP ${replay.status}\n\n${JSON.stringify(replayBody, null, 2)}`,
+    response: `HTTP ${lastStatus}\n\n${JSON.stringify(replayBody, null, 2)}`,
   });
 
-  if (!replay.ok) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: 'Replay failed',
-        steps,
-      },
-      { status: 502 },
-    );
-  }
-
-  return NextResponse.json({
-    ok: true,
-    steps,
-    created_job_id: typeof replayBody.id === 'string' ? replayBody.id : null,
-    payment_hash: challengePaymentHash,
-  });
+  return NextResponse.json(
+    {
+      ok: false,
+      error: 'Replay failed',
+      steps,
+    },
+    { status: 502 },
+  );
 }
