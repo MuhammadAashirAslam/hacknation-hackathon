@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { MarketplaceStats } from '@/app/page';
 import NewspaperLink from '@/components/NewspaperLink';
 import RevealBlock from '@/components/landing/RevealBlock';
@@ -37,12 +36,12 @@ export default function Hero({ stats }: HeroProps) {
         >
           Enter the Marketplace
         </NewspaperLink>
-        <Link
+        <NewspaperLink
           href="/try"
           className="px-8 py-3 rounded-lg border border-[#2a1c12] text-[#2a1c12] hover:bg-[#2a1c12]/10 font-semibold transition-colors text-center"
         >
           Try the L402 API
-        </Link>
+        </NewspaperLink>
       </RevealBlock>
 
       <RevealBlock className="relative z-10 w-full max-w-3xl" variant="clip" delayMs={300}>
