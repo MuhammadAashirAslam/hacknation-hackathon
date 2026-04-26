@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import NewspaperLink from '@/components/NewspaperLink';
 
 export default function Nav() {
@@ -13,15 +12,15 @@ export default function Nav() {
         </div>
 
         <div className="hidden md:flex items-center gap-8">
-          <Link href="/marketplace" className="text-[#6e5e54] hover:text-[#2a1c12] transition-colors">
+          <NewspaperLink href="/marketplace" className="text-[#6e5e54] hover:text-[#2a1c12] transition-colors">
             Marketplace
-          </Link>
-          <Link href="/try" className="text-[#6e5e54] hover:text-[#2a1c12] transition-colors">
+          </NewspaperLink>
+          <NewspaperLink href="/try" className="text-[#6e5e54] hover:text-[#2a1c12] transition-colors">
             Try It
-          </Link>
-          <Link href="/docs" className="text-[#6e5e54] hover:text-[#2a1c12] transition-colors">
-            Docs
-          </Link>
+          </NewspaperLink>
+          <NewspaperLink href="/docs" className="text-[#6e5e54] hover:text-[#2a1c12] transition-colors">
+            API Docs
+          </NewspaperLink>
         </div>
 
         <NewspaperLink
