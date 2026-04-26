@@ -175,7 +175,7 @@ export async function createL402Challenge(
 
 export type L402VerifyResult =
   | { ok: true; payment_hash: string }
-  | { ok: false; status: 401 | 403; code: string; error: string };
+  | { ok: false; status: 401 | 402 | 403; code: string; error: string };
 
 export async function verifyL402Header(
   authHeader: string,
