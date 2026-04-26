@@ -134,6 +134,11 @@ export async function getMarketplaceBalance(): Promise<number> {
   return data.balanceSats;
 }
 
+export async function getAgentBalance(): Promise<number> {
+  const data = await callDaemonAt<MdkBalanceData>(AGENT_WALLET_URL, '/balance');
+  return data.balanceSats;
+}
+
 export async function verifyPayment(paymentHash: string): Promise<boolean> {
   const data = await callDaemon<MdkPaymentsData>('/payments');
   return data.payments.some(

@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import { JobCard } from '@/components/JobCard';
 import { TransactionFeed, type Transaction } from '@/components/TransactionFeed';
+import { WalletStatus } from '@/components/WalletStatus';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -48,6 +50,22 @@ interface Stats {
   jobs_completed: number;
   sats_moved: number;
   fees_collected: number;
+}
+
+const TX_LABELS: Record<Transaction['type'], string> = {
+  job_posted: 'Job posted',
+  job_claimed: 'Job claimed',
+  job_completed: 'Job completed',
+};
+
+function showTxToast(tx: Transaction): void {
+  const sign = tx.direction === 'in' ? '+' : '−';
+  const shortTx = tx.id.slice(0, 8);
+  const shortAgent = tx.agent_id.length > 12 ? `${tx.agent_id.slice(0, 12)}…` : tx.agent_id;
+  toast.success(TX_LABELS[tx.type], {
+    description: `${sign}${tx.sats.toLocaleString()} sats · ${shortAgent} · tx ${shortTx}`,
+    duration: 4500,
+  });
 }
 
 export default function MarketplacePage() {
@@ -147,12 +165,18 @@ export default function MarketplacePage() {
   }, [fetchStats]);
 
   // Subscribe to events
+  const mountedAtRef = useRef<number>(Date.now());
   useEffect(() => {
     const eventSource = new EventSource('/api/events');
     eventSource.onmessage = (event) => {
       try {
         const newTx = JSON.parse(event.data) as Transaction;
         setFeed((prev) => [newTx, ...prev].slice(0, 20));
+
+        // Toast only live events, not the SSE backlog replayed on connect.
+        if (newTx.timestamp > mountedAtRef.current) {
+          showTxToast(newTx);
+        }
       } catch {
         // Ping comments and malformed payloads are ignored.
       }
@@ -237,6 +261,8 @@ export default function MarketplacePage() {
               Post a Job
             </Button>
           </div>
+
+          <WalletStatus />
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="market-surface rounded-lg p-3">
