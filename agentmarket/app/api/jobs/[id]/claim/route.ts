@@ -27,6 +27,13 @@ const claimHandler = async (req: Request, context?: unknown): Promise<Response> 
     return NextResponse.json({ error: 'Job not found', code: 'not_found' }, { status: 404 });
   }
   if (job.status === 'claimed') {
+    // Idempotent: if THIS worker has already claimed it, return 200 so the
+    // worker can proceed to deliver. (Demo-mode children are claim-free, so
+    // duplicate ticks against the same job were silently 409'ing the rightful
+    // worker.) Only block if a DIFFERENT worker holds it.
+    if (job.worker_id === worker_id) {
+      return NextResponse.json(job as Job, { status: 200 });
+    }
     return NextResponse.json({ error: 'Job already claimed', code: 'already_claimed' }, { status: 409 });
   }
   if (job.status === 'completed') {

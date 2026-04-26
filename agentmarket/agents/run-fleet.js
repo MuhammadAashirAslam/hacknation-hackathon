@@ -42,6 +42,16 @@ const FLEET_MODELS = (
     .split(",")
     .map((s) => s.trim());
 
+// Per-worker API keys. Lets each scout use its own Groq key (different orgs =
+// independent quotas). Empty entries fall back to the global GROQ_API_KEY /
+// GEMINI_API_KEY from .env.local. Index aligns with FLEET_NAMES.
+const FLEET_GROQ_KEYS = (process.env.FLEET_GROQ_KEYS || "")
+    .split(",")
+    .map((s) => s.trim());
+const FLEET_GEMINI_KEYS = (process.env.FLEET_GEMINI_KEYS || "")
+    .split(",")
+    .map((s) => s.trim());
+
 const STAGGER_MS = Number(process.env.FLEET_STAGGER || "400");
 
 const WORKER_PATH = path.resolve(__dirname, "worker.js");
@@ -90,15 +100,33 @@ async function main() {
         const provider = FLEET_PROVIDERS[i] || "groq";
         const model = FLEET_MODELS[i] || "";
 
-        console.log(`[fleet] ${name} → provider=${provider} model=${model || "(default)"}`);
+        const groqKey = FLEET_GROQ_KEYS[i] || "";
+        const geminiKey = FLEET_GEMINI_KEYS[i] || "";
+        const keyTag = groqKey
+            ? `groq=…${groqKey.slice(-4)}`
+            : geminiKey
+              ? `gemini=…${geminiKey.slice(-4)}`
+              : "(inherit)";
+        console.log(
+            `[fleet] ${name} → provider=${provider} model=${model || "(default)"} key=${keyTag}`,
+        );
+
+        const childEnv = {
+            ...process.env,
+            WORKER_ID: name,
+            LLM_PROVIDER: provider,
+            LLM_MODEL: model,
+        };
+        if (groqKey) {
+            childEnv.GROQ_API_KEY = groqKey;
+            childEnv.MODAL_API_KEY = groqKey;
+        }
+        if (geminiKey) {
+            childEnv.GEMINI_API_KEY = geminiKey;
+        }
 
         const child = spawn(process.execPath, [WORKER_PATH], {
-            env: {
-                ...process.env,
-                WORKER_ID: name,
-                LLM_PROVIDER: provider,
-                LLM_MODEL: model,
-            },
+            env: childEnv,
             stdio: ["ignore", "pipe", "pipe"],
         });
 
