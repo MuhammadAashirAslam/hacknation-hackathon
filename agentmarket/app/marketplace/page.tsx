@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { JobCard } from '@/components/JobCard';
 import { TransactionFeed, type Transaction } from '@/components/TransactionFeed';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Zap, Plus, Search, Filter } from 'lucide-react';
+import { Zap, Plus } from 'lucide-react';
 import { JobCardSkeleton } from '@/components/JobCardSkeleton';
 
 interface Job {
@@ -66,6 +66,7 @@ export default function MarketplacePage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'claimed' | 'completed'>('all');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'summarize' | 'classify' | 'translate' | 'qa'>('all');
   const [postingStatus, setPostingStatus] = useState<'idle' | 'requesting' | 'awaiting' | 'success'>('idle');
+  const [postedJobId, setPostedJobId] = useState<string | null>(null);
   // feedIsLive is surfaced by TransactionFeed internally; unused at page level for now
 
   // Form state
@@ -94,63 +95,103 @@ export default function MarketplacePage() {
     return true;
   });
 
-  // Poll stats
+  const fetchJobs = useCallback(async () => {
+    const res = await fetch('/api/jobs');
+    if (!res.ok) {
+      throw new Error(`Failed to fetch jobs (${res.status})`);
+    }
+    const data = (await res.json()) as Job[];
+    setJobs(data);
+  }, []);
+
+  const fetchStats = useCallback(async () => {
+    const res = await fetch('/api/stats');
+    if (!res.ok) {
+      throw new Error(`Failed to fetch stats (${res.status})`);
+    }
+    const data = (await res.json()) as Stats;
+    setStats(data);
+  }, []);
+
+  // Initial page data
   useEffect(() => {
-    // TODO: Replace with actual /api/stats fetch
+    let cancelled = false;
+    const load = async () => {
+      try {
+        await Promise.all([fetchJobs(), fetchStats()]);
+      } catch (err) {
+        console.error('Failed to load marketplace data:', err);
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchJobs, fetchStats]);
+
+  // Poll stats for top counters
+  useEffect(() => {
     const interval = setInterval(() => {
-      // const fetchStats = async () => {
-      //   try {
-      //     const res = await fetch('/api/stats');
-      //     const newStats = await res.json();
-      //     setStats(newStats);
-      //   } catch (err) {
-      //     console.error('Failed to fetch stats:', err);
-      //   }
-      // };
-      // fetchStats();
+      fetchStats().catch((err) => {
+        console.error('Failed to fetch stats:', err);
+      });
     }, 3000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchStats]);
 
   // Subscribe to events
   useEffect(() => {
-    // TODO: Replace with actual /api/events SSE subscription
-    // const eventSource = new EventSource('/api/events');
-    // eventSource.onmessage = (event) => {
-    //   const newTx = JSON.parse(event.data);
-    //   setFeed((prev) => [newTx, ...prev].slice(0, 20));
-    //   // Refetch jobs when an event occurs
-    //   fetchJobs();
-    // };
-    // return () => eventSource.close();
-  }, []);
+    const eventSource = new EventSource('/api/events');
+    eventSource.onmessage = (event) => {
+      try {
+        const newTx = JSON.parse(event.data) as Transaction;
+        setFeed((prev) => [newTx, ...prev].slice(0, 20));
+      } catch {
+        // Ping comments and malformed payloads are ignored.
+      }
+      fetchJobs().catch((err) => {
+        console.error('Failed to refetch jobs after event:', err);
+      });
+      fetchStats().catch((err) => {
+        console.error('Failed to refetch stats after event:', err);
+      });
+    };
+    eventSource.onerror = () => {
+      // TransactionFeed has dedicated reconnect UX; page only needs best-effort refreshes.
+    };
+    return () => eventSource.close();
+  }, [fetchJobs, fetchStats]);
 
   const handlePostJob = async (e: React.FormEvent) => {
     e.preventDefault();
     setPostingStatus('requesting');
+    setPostedJobId(null);
 
     try {
-      // TODO: Wire to actual /api/jobs POST endpoint
-      // const response = await fetch('/api/jobs', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     title: formData.title,
-      //     category: formData.category,
-      //     input: formData.input,
-      //     reward_sats: reward,
-      //     requester_id: formData.requester_id,
-      //   }),
-      // });
-      // const job = await response.json();
-      // setJobs((prev) => [job, ...prev]);
-
-      // Simulate the flow
-      await new Promise((resolve) => setTimeout(resolve, 1000));
       setPostingStatus('awaiting');
+      const response = await fetch('/api/demo/post-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: formData.title,
+          category: formData.category,
+          input: formData.input,
+          reward_sats: reward,
+          requester_id: formData.requester_id,
+        }),
+      });
+      const body = (await response.json()) as { job?: Job; error?: string };
+      if (!response.ok || !body.job) {
+        throw new Error(body.error ?? `Failed to post job (${response.status})`);
+      }
 
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setPostedJobId(body.job.id);
+      await Promise.all([fetchJobs(), fetchStats()]);
       setPostingStatus('success');
 
       // Reset form after a delay
@@ -163,6 +204,7 @@ export default function MarketplacePage() {
           requester_id: 'demo-requester-1',
         });
         setPostingStatus('idle');
+        setPostedJobId(null);
         setIsDialogOpen(false);
       }, 2000);
     } catch (err) {
@@ -461,7 +503,7 @@ export default function MarketplacePage() {
                       Job posted ✓
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Check the marketplace for your new job.
+                      {postedJobId ? `Job ID: ${postedJobId}` : 'Check the marketplace for your new job.'}
                     </p>
                   </div>
                 )}

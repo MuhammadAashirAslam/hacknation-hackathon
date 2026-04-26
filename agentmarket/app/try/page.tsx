@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Zap, Copy, CheckCircle, ArrowRight, Terminal } from 'lucide-react'
+import { Zap, Copy, CheckCircle, ArrowRight } from 'lucide-react'
 
 interface StepData {
   title: string
@@ -59,31 +59,74 @@ Content-Type: application/json
 
 type DemoStatus = 'idle' | 'running-step-1' | 'running-step-2' | 'running-step-3' | 'complete'
 
+interface DemoTraceResponse {
+  ok: boolean
+  error?: string
+  steps?: Array<{ title: string; response: string }>
+  created_job_id?: string | null
+}
+
 export default function TryPage() {
   const [status, setStatus] = useState<DemoStatus>('idle')
   const [completedSteps, setCompletedSteps] = useState<boolean[]>([false, false, false])
   const [createdJobId, setCreatedJobId] = useState<string | null>(null)
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
+  const [stepResponses, setStepResponses] = useState<string[]>(STEPS.map((step) => step.response))
 
   const runDemo = async () => {
     setStatus('running-step-1')
     setCompletedSteps([false, false, false])
     setCreatedJobId(null)
+    setStepResponses(STEPS.map((step) => step.response))
 
-    // Step 1: Request API - 600ms delay
-    await new Promise(resolve => setTimeout(resolve, 600))
+    let trace: DemoTraceResponse
+    try {
+      const res = await fetch('/api/demo/run-l402', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      trace = (await res.json()) as DemoTraceResponse
+      if (!res.ok || !trace.steps || trace.steps.length < 3) {
+        throw new Error(trace.error ?? `Demo failed with ${res.status}`)
+      }
+    } catch (err) {
+      setStepResponses((prev) => {
+        const next = [...prev]
+        next[0] = `Request failed: ${(err as Error).message}`
+        next[1] = 'Payment step did not run.'
+        next[2] = 'Replay step did not run.'
+        return next
+      })
+      setStatus('complete')
+      return
+    }
+
+    setStepResponses((prev) => {
+      const next = [...prev]
+      next[0] = trace.steps![0].response
+      return next
+    })
+    await new Promise(resolve => setTimeout(resolve, 350))
     setCompletedSteps(prev => [true, prev[1], prev[2]])
 
-    // Step 2: Pay invoice - 1500ms simulated payment
     setStatus('running-step-2')
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    setStepResponses((prev) => {
+      const next = [...prev]
+      next[1] = trace.steps![1].response
+      return next
+    })
+    await new Promise(resolve => setTimeout(resolve, 550))
     setCompletedSteps(prev => [prev[0], true, prev[2]])
 
-    // Step 3: Retry with proof - 600ms delay
     setStatus('running-step-3')
-    await new Promise(resolve => setTimeout(resolve, 600))
+    setStepResponses((prev) => {
+      const next = [...prev]
+      next[2] = trace.steps![2].response
+      return next
+    })
+    await new Promise(resolve => setTimeout(resolve, 350))
     setCompletedSteps([true, true, true])
-    setCreatedJobId('job_8a1f4c92d7e3b1c6')
+    setCreatedJobId(trace.created_job_id ?? null)
     setStatus('complete')
   }
 
@@ -92,6 +135,7 @@ export default function TryPage() {
     setCompletedSteps([false, false, false])
     setCreatedJobId(null)
     setCopiedIndex(null)
+    setStepResponses(STEPS.map((step) => step.response))
   }
 
   const copyToClipboard = (text: string, index: number) => {
@@ -249,7 +293,7 @@ export default function TryPage() {
                         {stepIndex === 0 ? 'RESPONSE (402 Payment Required)' : stepIndex === 1 ? 'PAYMENT OUTPUT' : 'RESPONSE (201 Created)'}
                       </span>
                       <code className="text-sm font-mono text-slate-300 block whitespace-pre-wrap break-words mt-2">
-                        {step.response}
+                        {stepResponses[stepIndex]}
                       </code>
                     </div>
                   </div>

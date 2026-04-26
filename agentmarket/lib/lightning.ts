@@ -13,7 +13,11 @@
 
 import { createHmac } from 'node:crypto';
 
-const WALLET_URL = process.env.MDK_WALLET_URL ?? 'http://localhost:3456';
+const normalizeBaseUrl = (value: string): string => value.replace(/\/+$/, '');
+const WALLET_URL = normalizeBaseUrl(process.env.MDK_WALLET_URL ?? 'http://localhost:3456');
+const AGENT_WALLET_URL = normalizeBaseUrl(
+  process.env.MDK_AGENT_WALLET_URL ?? process.env.AGENT_WALLET_URL ?? 'http://localhost:3457',
+);
 
 // Token signing secret. In production this would be a proper env secret.
 // For the demo, derived from MDK_ACCESS_TOKEN so it's unique per deployment.
@@ -38,6 +42,28 @@ async function callDaemon<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (err) {
     throw new Error(
       `MDK daemon unreachable at ${WALLET_URL}${path}: ${(err as Error).message}. ` +
+      `Start it with: npx @moneydevkit/agent-wallet@latest start --daemon`,
+    );
+  }
+  const body = (await res.json()) as MdkEnvelope<T>;
+  if (!body.success || body.data === undefined) {
+    const code = body.error?.code ?? `HTTP_${res.status}`;
+    const msg = body.error?.message ?? 'unknown daemon error';
+    throw new Error(`MDK ${path} failed [${code}]: ${msg}`);
+  }
+  return body.data;
+}
+
+async function callDaemonAt<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    });
+  } catch (err) {
+    throw new Error(
+      `MDK daemon unreachable at ${baseUrl}${path}: ${(err as Error).message}. ` +
       `Start it with: npx @moneydevkit/agent-wallet@latest start --daemon`,
     );
   }
@@ -92,6 +118,14 @@ export async function payInvoice(bolt11: string): Promise<PaymentResult> {
     body: JSON.stringify({ destination: bolt11 }),
   });
   // Daemon does not return preimage on send; settlement is async.
+  return { payment_hash: data.paymentHash, preimage: '', fee_sats: 0 };
+}
+
+export async function payInvoiceAsAgent(bolt11: string): Promise<PaymentResult> {
+  const data = await callDaemonAt<MdkSendData>(AGENT_WALLET_URL, '/send', {
+    method: 'POST',
+    body: JSON.stringify({ destination: bolt11 }),
+  });
   return { payment_hash: data.paymentHash, preimage: '', fee_sats: 0 };
 }
 
