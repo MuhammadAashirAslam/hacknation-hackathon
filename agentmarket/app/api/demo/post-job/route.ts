@@ -24,6 +24,21 @@ interface L402ChallengeBody {
   payment_hash: string;
 }
 
+function isJob(value: unknown): value is Job {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.title === 'string' &&
+    typeof v.category === 'string' &&
+    typeof v.input === 'string' &&
+    typeof v.reward_sats === 'number' &&
+    typeof v.fee_sats === 'number' &&
+    typeof v.status === 'string' &&
+    typeof v.requester_id === 'string'
+  );
+}
+
 export async function POST(req: Request): Promise<Response> {
   let rawBody: Record<string, unknown>;
   try {
@@ -162,8 +177,18 @@ export async function POST(req: Request): Promise<Response> {
     replayBody = (await replay.json().catch(() => ({}))) as Record<string, unknown>;
     lastStatus = replay.status;
     if (replay.ok) {
+      if (!isJob(replayBody)) {
+        return NextResponse.json(
+          {
+            error: 'Replay succeeded but job payload shape is invalid',
+            code: 'INVALID_REPLAY_PAYLOAD',
+            upstream_body: replayBody,
+          },
+          { status: 502 },
+        );
+      }
       return NextResponse.json(
-        { job: replayBody as unknown as Job, payment_hash: challenge.payment_hash },
+        { job: replayBody, payment_hash: challenge.payment_hash },
         { status: 201 },
       );
     }
