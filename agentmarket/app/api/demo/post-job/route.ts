@@ -163,7 +163,7 @@ export async function POST(req: Request): Promise<Response> {
     lastStatus = replay.status;
     if (replay.ok) {
       return NextResponse.json(
-        { job: replayBody as Job, payment_hash: challenge.payment_hash },
+        { job: replayBody as unknown as Job, payment_hash: challenge.payment_hash },
         { status: 201 },
       );
     }
