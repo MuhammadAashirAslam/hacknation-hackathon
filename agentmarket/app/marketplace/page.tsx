@@ -378,7 +378,7 @@ export default function MarketplacePage() {
 
       {/* Post a Job Modal */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-lg bg-[#fffbf3] border-[#b39a78]">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto bg-[#fffbf3] border-[#b39a78]">
           <DialogHeader>
             <DialogTitle className="text-[#2a1c12]">Post a Job</DialogTitle>
             <DialogDescription className="text-[#6e5e54]">
@@ -438,7 +438,7 @@ export default function MarketplacePage() {
                   setFormData((prev) => ({ ...prev, input: e.target.value }))
                 }
                 required
-                className="bg-[#fffbf3] border-[#b39a78] text-[#2a1c12] font-mono text-xs"
+                className="min-h-24 max-h-56 overflow-y-auto [field-sizing:fixed] bg-[#fffbf3] border-[#b39a78] text-[#2a1c12] font-mono text-xs"
                 rows={4}
               />
             </div>
