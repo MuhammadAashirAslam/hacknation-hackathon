@@ -2,7 +2,7 @@
 
 ### MIT Bitcoin Hackathon 2025 — Track 2 (Spiral / Lightning Network)
 
-**Team:** SentientSystems
+**Team:** Edge Runners
 
 ---
 
