@@ -18,7 +18,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_MODEL =
   process.env.SERVER_GEMINI_MODEL ||
   process.env.GEMINI_MODEL ||
-  'gemini-1.5-flash';
+  'gemini-2.5-flash';
 
 const MAX_TOKENS = Number(process.env.SERVER_LLM_MAX_TOKENS || '2048');
 
@@ -38,21 +38,23 @@ function groqError(status: number, text: string): Error & { status: number } {
   return e;
 }
 
-async function callServerGroq(prompt: string): Promise<string> {
+async function callServerGroq(prompt: string, jsonMode = false): Promise<string> {
   if (!GROQ_API_KEY) {
     throw new Error('callServerGroq: GROQ_API_KEY (or MODAL_API_KEY) is not set');
   }
+  const reqBody: Record<string, unknown> = {
+    model: GROQ_MODEL,
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: MAX_TOKENS,
+  };
+  if (jsonMode) reqBody.response_format = { type: 'json_object' };
   const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${GROQ_API_KEY}`,
     },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: MAX_TOKENS,
-    }),
+    body: JSON.stringify(reqBody),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -73,19 +75,21 @@ async function callServerGroq(prompt: string): Promise<string> {
   );
 }
 
-async function callServerGemini(prompt: string): Promise<string> {
+async function callServerGemini(prompt: string, jsonMode = false): Promise<string> {
   if (!GEMINI_API_KEY) {
     throw new Error('callServerGemini: GEMINI_API_KEY is not set');
   }
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     GEMINI_MODEL,
   )}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+  const generationConfig: Record<string, unknown> = { maxOutputTokens: MAX_TOKENS };
+  if (jsonMode) generationConfig.responseMimeType = 'application/json';
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: MAX_TOKENS },
+      generationConfig,
     }),
   });
   if (!res.ok) {
@@ -122,26 +126,26 @@ function shouldRetryGroqWithGemini(err: unknown): boolean {
   );
 }
 
-export async function callServerLLM(prompt: string): Promise<string> {
+export async function callServerLLM(prompt: string, jsonMode = false): Promise<string> {
   const prefer = (process.env.SERVER_LLM_PROVIDER || 'groq').toLowerCase();
   if (prefer === 'gemini' && GEMINI_API_KEY) {
-    return callServerGemini(prompt);
+    return callServerGemini(prompt, jsonMode);
   }
   if (GROQ_API_KEY) {
     try {
-      return await callServerGroq(prompt);
+      return await callServerGroq(prompt, jsonMode);
     } catch (err) {
       if (shouldRetryGroqWithGemini(err)) {
         console.warn(
           '[callServerLLM] Groq failed, falling back to Gemini for this call',
         );
-        return callServerGemini(prompt);
+        return callServerGemini(prompt, jsonMode);
       }
       throw err;
     }
   }
   if (GEMINI_API_KEY) {
-    return callServerGemini(prompt);
+    return callServerGemini(prompt, jsonMode);
   }
   throw new Error(
     'callServerLLM: set GROQ_API_KEY (or MODAL_API_KEY) and/or GEMINI_API_KEY',
@@ -194,7 +198,7 @@ export async function decomposeJob(job: {
   input: string;
 }): Promise<SubTask[]> {
   const prompt = DECOMPOSER_PROMPT(job);
-  const raw = await callServerLLM(prompt);
+  const raw = await callServerLLM(prompt, true);
   const jsonStr = extractJsonObject(raw);
   if (!jsonStr) {
     throw new Error(`decomposeJob: no JSON found in LLM output: ${raw.slice(0, 200)}`);

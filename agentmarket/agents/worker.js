@@ -46,13 +46,12 @@ const GROQ_BASE_URL = (
 const GROQ_DEFAULT_MODEL =
     process.env.MODAL_MODEL || "llama-3.3-70b-versatile";
 
-// Gemini config. Default model intentionally uses the bare name (no "-latest"
-// suffix) — Google deprecated several aliases. gemini-1.5-flash is widely
-// free-tier accessible. Override via GEMINI_MODEL env if you have access to
-// gemini-2.0-flash etc.
+// Gemini config. gemini-1.5-flash was retired from the v1beta endpoint in
+// 2026; gemini-2.0-flash is the current free-tier default. Verify with
+// `GET /v1beta/models?key=...` if this 404s on a new key.
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const GEMINI_DEFAULT_MODEL =
-    process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 // GLM config (uses Modal endpoint per existing setup).
 const GLM_API_KEY = process.env.GLM_API_KEY || "";

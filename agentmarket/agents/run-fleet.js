@@ -37,7 +37,7 @@ const FLEET_PROVIDERS = (
 // 70b-versatile model. Override via FLEET_MODELS for paid-tier diversity.
 const FLEET_MODELS = (
     process.env.FLEET_MODELS ||
-    "llama-3.3-70b-versatile,gemini-1.5-flash,llama-3.3-70b-versatile"
+    "llama-3.3-70b-versatile,gemini-2.5-flash,llama-3.3-70b-versatile"
 )
     .split(",")
     .map((s) => s.trim());
