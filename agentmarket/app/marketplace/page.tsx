@@ -67,6 +67,7 @@ export default function MarketplacePage() {
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'summarize' | 'classify' | 'translate' | 'qa'>('all');
   const [postingStatus, setPostingStatus] = useState<'idle' | 'requesting' | 'awaiting' | 'success'>('idle');
   const [postedJobId, setPostedJobId] = useState<string | null>(null);
+  const [resultJobId, setResultJobId] = useState<string | null>(null);
   // feedIsLive is surfaced by TransactionFeed internally; unused at page level for now
 
   // Form state
@@ -87,6 +88,7 @@ export default function MarketplacePage() {
   const reward = parseInt(formData.reward) || 0;
   const fee = Math.ceil(reward * 0.1);
   const totalSats = reward + fee;
+  const resultJob = resultJobId ? jobs.find((job) => job.id === resultJobId) ?? null : null;
 
   // Filter jobs
   const filteredJobs = jobs.filter((job) => {
@@ -357,7 +359,11 @@ export default function MarketplacePage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredJobs.map((job) => (
-                  <JobCard key={job.id} job={job} />
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    onViewResult={(jobId) => setResultJobId(jobId)}
+                  />
                 ))}
               </div>
             )}
@@ -534,6 +540,28 @@ export default function MarketplacePage() {
               </p>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resultJobId !== null} onOpenChange={(open) => !open && setResultJobId(null)}>
+        <DialogContent className="sm:max-w-2xl bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Job Result</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              {resultJob ? `${resultJob.title} (${resultJob.category})` : 'Completed job result'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="text-xs text-muted-foreground">
+              {resultJob?.worker_id ? `Completed by ${resultJob.worker_id}` : 'Worker unknown'}
+            </div>
+            <div className="max-h-[50vh] overflow-y-auto rounded-md border border-border bg-background p-3">
+              <pre className="whitespace-pre-wrap break-words text-sm text-foreground font-mono">
+                {resultJob?.result ?? 'No result available for this job yet.'}
+              </pre>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

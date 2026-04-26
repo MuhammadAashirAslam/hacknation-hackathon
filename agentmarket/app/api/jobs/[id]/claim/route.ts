@@ -5,6 +5,7 @@ import { broadcast } from '@/lib/feed';
 import type { Job } from '@/lib/types';
 
 const DEPOSIT_SATS = Number(process.env.CLAIM_DEPOSIT_SATS ?? '2');
+const FREE_MODE = process.env.DEMO_FREE_JOBS === 'true';
 
 const claimHandler = async (req: Request, context?: unknown): Promise<Response> => {
   const { id } = await (context as { params: Promise<{ id: string }> }).params;
@@ -56,5 +57,6 @@ const claimHandler = async (req: Request, context?: unknown): Promise<Response> 
 const _handler = withL402(claimHandler, { sats: DEPOSIT_SATS });
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
+  if (FREE_MODE) return claimHandler(req, ctx);
   return _handler(req, ctx);
 }

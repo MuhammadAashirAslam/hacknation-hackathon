@@ -7,6 +7,7 @@ import type { Job } from '@/lib/types';
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
+const FREE_MODE = process.env.DEMO_FREE_JOBS === 'true';
 
 export async function POST(req: Request, ctx: RouteContext): Promise<Response> {
   const { id } = await ctx.params;
@@ -55,12 +56,14 @@ export async function POST(req: Request, ctx: RouteContext): Promise<Response> {
     return NextResponse.json({ error: 'Update failed', code: 'UPDATE_FAILED' }, { status: 500 });
   }
 
-  try {
-    await payInvoice(payout_invoice);
-  } catch {
-    // Revert: daemon rejected the payment; put job back so worker can retry deliver.
-    updateJob(id, { status: 'claimed' });
-    return NextResponse.json({ error: 'Payout failed', code: 'PAYMENT_FAILED' }, { status: 502 });
+  if (!FREE_MODE) {
+    try {
+      await payInvoice(payout_invoice);
+    } catch {
+      // Revert: daemon rejected the payment; put job back so worker can retry deliver.
+      updateJob(id, { status: 'claimed' });
+      return NextResponse.json({ error: 'Payout failed', code: 'PAYMENT_FAILED' }, { status: 502 });
+    }
   }
 
   const completed = updateJob(id, { result, completed_at: Date.now() });

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "worker": "node --env-file=.env.local agents/worker.js",
+    "requester": "node --env-file=.env.local agents/requester.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
