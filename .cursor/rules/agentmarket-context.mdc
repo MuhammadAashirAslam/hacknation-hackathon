@@ -23,10 +23,19 @@ green `#10B981` text `#F1F5F9` muted `#94A3B8`.
 ## Wallets currently running
 
 - **Wallet-1 (marketplace)**: `http://localhost:3456` — receives job payments and L402 deposits
-- **Wallet-2 (agent)**: `http://localhost:3457` — used by worker (and likely requester); pays L402 invoices, receives worker payouts
-- Cross-wallet payment is verified (sats actually move on mainnet)
+- **Wallet-2 (agent)**: `http://localhost:3457` — used by worker (and requester via `/api/demo/post-job`); pays L402 invoices, receives worker payouts. Mnemonic stored at `C:\Users\Rehan\agentmarket-wallets\agent\.mdk-wallet\config.json`.
+- Cross-wallet payment is verified end-to-end on mainnet (Phase 6 closing test)
 - A wallet **cannot pay its own invoice** (Lightning self-pay protection)
 - Second wallet was created via `USERPROFILE` override — `--config-dir` and `MDK_CONFIG_DIR` are silently ignored
+- **MDK CLI `--port` flag is broken in `@moneydevkit/agent-wallet@0.16.0`**. The CLI parses `--port` via minimist but `start --daemon` then calls `getPort()` which reads ONLY `MDK_WALLET_PORT` env var. To run a second daemon on a non-default port:
+  ```powershell
+  $env:USERPROFILE = "C:\path\to\second-wallet-root"   # picks distinct config dir
+  $env:MDK_WALLET_PORT = "3457"                         # ONLY mechanism that works
+  npx -y @moneydevkit/agent-wallet@latest init          # required first time (creates config.json)
+  npx -y @moneydevkit/agent-wallet@latest start --daemon
+  ```
+- **Lightning channel reserve gotcha** (mainnet): a fresh agent wallet topped up via LSPS4 JIT channel will show e.g. `balance=29 sats` but `outbound capacity ≈ 1.4 sats`. The LSP opens a large channel (~1700+ sats reserve), and the agent's local share must exceed the 1% channel reserve before it can send. **Top up to ≥ 80 sats before any agent-side send.** Symptom: `agent-wallet /send failed [SEND_FAILED]: insufficient outbound capacity: required Nmsat, available 1400msat`.
+- **LSP fees**: ~1 sat per inbound payment (LSPS4 routing). Channel-opening adds nothing extra after the first payment. Budget 2-3 sats of slippage per full job cycle.
 
 ## File ownership
 
@@ -95,6 +104,43 @@ each phase, success criteria must be **binary-verified** before the next phase
 begins. Hard-stop rule from original brief: if anything fundamental fails,
 surface clearly rather than building on top.
 
+## Phase 5a outcomes (UI migration — locked)
+
+- `agentmarket/` now uses Tailwind v4 (CSS-first via `@tailwindcss/postcss`). No `tailwind.config.js`.
+- Dark theme is forced via `<html className="dark">` in `app/layout.tsx`. `:root` light tokens exist in `globals.css` but never apply. **Do not install `next-themes` or build a theme toggle — we are dark-only.**
+- Fonts: Inter + JetBrains Mono via `next/font/google` (editorial Instrument Serif theme deferred — see HANDOFF.md §8).
+- Component prop signatures (post-5a, locked):
+  ```tsx
+  <JobCard job={job} onClaim={(id)=>...} onViewResult={(id)=>...} highlighted={false} />
+  <TransactionFeed initial={txs} sseUrl="/api/events" maxItems={50} className="" />
+  <LiveStats apiUrl="/api/stats" pollMs={3000} />
+  ```
+- `TransactionFeed` self-subscribes to `/api/events` (no parent wiring needed). `LiveStats` self-polls `/api/stats`. Phase 5b only needs to wire the marketplace job-list fetch and the post-job modal.
+- `app/marketplace/page.tsx` is a Next App Router page — **cannot accept arbitrary props**. Initial data must be fetched inside the component (useEffect on mount) or via a Server Component wrapper. The original v0 `MarketplacePageProps` interface was deleted during 5a.
+- `components/JobCard.tsx` uses hardcoded hex colors (e.g. `bg-[#1E293B]`) instead of token classes. Migrate to `bg-card` / `text-foreground` etc. when re-theming.
+- `ui-mockup/` folder is preserved at workspace root as a reference snapshot — do not delete or edit.
+
 ## Tech debt log
 
-(Empty — track here as it accumulates. Format: `route/file — issue — added in phase N`.)
+Format: `route/file — issue — added in phase N`.
+
+- `lib/lightning.ts` — `L402VerifyResult.status` was `401 \| 403`, expanded to `401 \| 402 \| 403` during 5a — phase 5a (no behavior change, just type)
+- `components/JobCard.tsx` — uses hardcoded hex (`bg-[#0F172A]` etc.) instead of Tailwind theme tokens; blocks one-line theme swap — phase 5a
+- `app/marketplace/page.tsx` — `handlePostJob` is fake (`setTimeout` chain); replace with real flow in 5b — phase 5a (intentional)
+- `app/marketplace/page.tsx` — `useEffect` for stats polling and SSE subscription are commented-out TODOs; the component children (`LiveStats`, `TransactionFeed`) self-wire so the page-level subscriptions may not be needed — re-evaluate in 5b — phase 5a (intentional)
+- `agents/worker.js` — `seen` set never re-admits a job after `process_error` (line 388 comment). Transient failures (LLM timeout, mid-flight payment race) permanently dead-letter the job for that worker process. Acceptable for demo, but a real worker should mark the job and retry once after a backoff — phase 6
+- `app/api/demo/post-job/route.ts` — added 6×2.5s retry on the L402 replay step to absorb Lightning settlement lag (~5-10s). Without this the agent loses the post-job sats but no job is created (silent burn). Mirrors `worker.js claimJobWithL402` — phase 6 closing test
+
+## Phase 6 closing test (real-money cycle, mainnet)
+
+**Verified working end-to-end on Apr 26, 07:55 UTC.** Single QA job, reward=10 sats:
+
+| Step | Money flow | Real settlement |
+|---|---|---|
+| Requester posts job (L402 11 sats) | agent → marketplace | 10 sats received (1 LSP fee) |
+| Worker auto-claims (L402 2 sats) | agent → marketplace | 1 sat received (1 LSP fee) |
+| Worker calls Groq llama-3.3-70b | (off-chain) | result="HELLO" in <1s |
+| Worker generates payout invoice 10 sats | — | — |
+| Worker posts /deliver | marketplace pays agent's invoice | 9 sats received (1 LSP fee) |
+
+Net per cycle: agent ≈ -4 sats, marketplace ≈ +1 sat, LSP ≈ +3 sats. Total settlement time post→deliver ≈ 23s.

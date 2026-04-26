@@ -142,33 +142,41 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  const replay = await fetch(targetUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `L402 ${challenge.macaroon}:${challenge.payment_hash}`,
-    },
-    body: JSON.stringify(createBody),
-  });
-
-  const replayBody = await replay.json().catch(() => ({}));
-  if (!replay.ok) {
-    return NextResponse.json(
-      {
-        error: 'Authorized replay failed',
-        code: 'REPLAY_FAILED',
-        upstream_status: replay.status,
-        upstream_body: replayBody,
+  // Lightning settlement is async: payInvoiceAsAgent returns once MDK has
+  // dispatched the payment, but the marketplace daemon needs a moment to
+  // observe the inbound payment before /api/jobs's L402 verify will pass.
+  // Retry the replay a few times to absorb the gap. Mirrors worker.js pattern.
+  const maxReplays = 6;
+  let replayBody: Record<string, unknown> = {};
+  let lastStatus = 0;
+  for (let i = 0; i < maxReplays; i++) {
+    await new Promise((r) => setTimeout(r, 2500));
+    const replay = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `L402 ${challenge.macaroon}:${challenge.payment_hash}`,
       },
-      { status: 502 },
-    );
+      body: JSON.stringify(createBody),
+    });
+    replayBody = (await replay.json().catch(() => ({}))) as Record<string, unknown>;
+    lastStatus = replay.status;
+    if (replay.ok) {
+      return NextResponse.json(
+        { job: replayBody as Job, payment_hash: challenge.payment_hash },
+        { status: 201 },
+      );
+    }
+    if (replay.status !== 402) break;
   }
 
   return NextResponse.json(
     {
-      job: replayBody as Job,
-      payment_hash: challenge.payment_hash,
+      error: 'Authorized replay failed',
+      code: 'REPLAY_FAILED',
+      upstream_status: lastStatus,
+      upstream_body: replayBody,
     },
-    { status: 201 },
+    { status: 502 },
   );
 }
