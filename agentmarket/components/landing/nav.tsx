@@ -2,14 +2,13 @@
 
 import Link from 'next/link';
 import NewspaperLink from '@/components/NewspaperLink';
-import { SparkGlyph } from '@/components/icons/NewspaperIcons';
 
 export default function Nav() {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-[#f1e3cb]/70 border-b border-[#b39a78]/60">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <SparkGlyph className="w-5 h-5 text-[#2a1c12]" />
+          <img src="/logo.svg" alt="AgentMarket logo" className="h-14 w-14" />
           <span className="text-lg font-semibold font-sans text-[#2a1c12]">AgentMarket</span>
         </div>
 
