@@ -216,54 +216,50 @@ export default function MarketplacePage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen">
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        {/* Top Bar */}
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            {/* Title Section */}
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-foreground mb-1">
+              <h1 className="text-3xl font-bold text-[#2a1c12] mb-1">
                 Marketplace
               </h1>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-[#6e5e54]">
                 Live agent jobs settling on Lightning
               </p>
             </div>
 
-            {/* Post a Job Button */}
             <Button
               onClick={() => setIsDialogOpen(true)}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 w-full sm:w-auto"
+              className="bg-[#2a1c12] hover:bg-[#1a0e06] text-[#fffbf3] gap-2 w-full sm:w-auto"
             >
               <Plus className="w-4 h-4" />
               Post a Job
             </Button>
           </div>
 
-          {/* Stats Pills */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-card border border-border rounded-lg p-3">
-              <p className="text-xs text-muted-foreground mb-1">Jobs Open</p>
-              <p className="text-lg font-mono font-bold text-accent">
+            <div className="market-surface rounded-lg p-3">
+              <p className="text-xs text-[#6e5e54] mb-1">Jobs Open</p>
+              <p className="text-lg font-mono font-bold text-[#2a1c12]">
                 {stats.jobs_open}
               </p>
             </div>
-            <div className="bg-card border border-border rounded-lg p-3">
-              <p className="text-xs text-muted-foreground mb-1">Jobs Claimed</p>
-              <p className="text-lg font-mono font-bold text-accent">
+            <div className="market-surface rounded-lg p-3">
+              <p className="text-xs text-[#6e5e54] mb-1">Jobs Claimed</p>
+              <p className="text-lg font-mono font-bold text-[#2a1c12]">
                 {stats.jobs_claimed}
               </p>
             </div>
-            <div className="bg-card border border-border rounded-lg p-3">
-              <p className="text-xs text-muted-foreground mb-1">Completed</p>
-              <p className="text-lg font-mono font-bold text-accent">
+            <div className="market-surface rounded-lg p-3">
+              <p className="text-xs text-[#6e5e54] mb-1">Completed</p>
+              <p className="text-lg font-mono font-bold text-[#2a1c12]">
                 {stats.jobs_completed}
               </p>
             </div>
-            <div className="bg-card border border-border rounded-lg p-3">
-              <p className="text-xs text-muted-foreground mb-1">Sats Moved</p>
-              <p className="text-lg font-mono font-bold text-accent">
+            <div className="market-surface rounded-lg p-3">
+              <p className="text-xs text-[#6e5e54] mb-1">Sats Moved</p>
+              <p className="text-lg font-mono font-bold text-[#2a1c12]">
                 {(stats.sats_moved / 1000).toFixed(0)}k
               </p>
             </div>
@@ -280,8 +276,8 @@ export default function MarketplacePage() {
                 onClick={() => setStatusFilter(status)}
                 className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                   statusFilter === status
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-card border border-border text-foreground hover:border-primary/50'
+                    ? 'bg-[#2a1c12] text-[#fffbf3]'
+                    : 'market-surface text-[#2a1c12] hover:border-[#2a1c12]/50'
                 }`}
               >
                 {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -304,7 +300,7 @@ export default function MarketplacePage() {
                 )
               }
             >
-              <SelectTrigger className="w-full sm:w-[180px] bg-card border-border">
+              <SelectTrigger className="w-full sm:w-[180px] bg-[#fffbf3]/80 border-[#b39a78] text-[#2a1c12]">
                 <SelectValue placeholder="All categories" />
               </SelectTrigger>
               <SelectContent>
@@ -338,19 +334,19 @@ export default function MarketplacePage() {
                     setStatusFilter('all');
                     setCategoryFilter('all');
                   }}
-                  className="text-primary hover:underline text-sm font-medium"
+                  className="text-[#2a1c12] hover:underline text-sm font-medium"
                 >
                   Clear filters
                 </button>
               </div>
             ) : jobs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
-                <p className="text-muted-foreground mb-4">
+                <p className="text-[#6e5e54] mb-4">
                   The marketplace is quiet. Post the first job →
                 </p>
                 <Button
                   onClick={() => setIsDialogOpen(true)}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+                  className="bg-[#2a1c12] hover:bg-[#1a0e06] text-[#fffbf3] gap-2"
                 >
                   <Zap className="w-4 h-4" />
                   Post a Job
@@ -371,7 +367,7 @@ export default function MarketplacePage() {
 
           {/* Transaction Feed Sidebar */}
           <div className="lg:sticky lg:top-6 h-fit">
-            <div className="bg-card border border-border rounded-lg p-4">
+            <div className="market-surface rounded-lg p-4">
               <TransactionFeed
                 initial={feed}
               />
@@ -382,20 +378,17 @@ export default function MarketplacePage() {
 
       {/* Post a Job Modal */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-lg bg-card border-border">
+        <DialogContent className="sm:max-w-lg bg-[#fffbf3] border-[#b39a78]">
           <DialogHeader>
-            <DialogTitle className="text-foreground">Post a Job</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
+            <DialogTitle className="text-[#2a1c12]">Post a Job</DialogTitle>
+            <DialogDescription className="text-[#6e5e54]">
               Post a task for agents to claim and complete
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handlePostJob} className="space-y-4">
-            {/* Title */}
             <div className="space-y-2">
-              <Label htmlFor="title" className="text-foreground">
-                Title
-              </Label>
+              <Label htmlFor="title" className="text-[#2a1c12]">Title</Label>
               <Input
                 id="title"
                 placeholder="e.g., Summarize this article"
@@ -404,15 +397,12 @@ export default function MarketplacePage() {
                   setFormData((prev) => ({ ...prev, title: e.target.value }))
                 }
                 required
-                className="bg-background border-border text-foreground"
+                className="bg-[#fffbf3] border-[#b39a78] text-[#2a1c12]"
               />
             </div>
 
-            {/* Category */}
             <div className="space-y-2">
-              <Label htmlFor="category" className="text-foreground">
-                Category
-              </Label>
+              <Label htmlFor="category" className="text-[#2a1c12]">Category</Label>
               <Select
                 value={formData.category}
                 onValueChange={(value) =>
@@ -426,7 +416,7 @@ export default function MarketplacePage() {
                   }))
                 }
               >
-                <SelectTrigger className="bg-background border-border text-foreground">
+                <SelectTrigger className="bg-[#fffbf3] border-[#b39a78] text-[#2a1c12]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -438,11 +428,8 @@ export default function MarketplacePage() {
               </Select>
             </div>
 
-            {/* Input */}
             <div className="space-y-2">
-              <Label htmlFor="input" className="text-foreground">
-                Input
-              </Label>
+              <Label htmlFor="input" className="text-[#2a1c12]">Input</Label>
               <Textarea
                 id="input"
                 placeholder="URL to summarize, text to classify, etc."
@@ -451,16 +438,13 @@ export default function MarketplacePage() {
                   setFormData((prev) => ({ ...prev, input: e.target.value }))
                 }
                 required
-                className="bg-background border-border text-foreground font-mono text-xs"
+                className="bg-[#fffbf3] border-[#b39a78] text-[#2a1c12] font-mono text-xs"
                 rows={4}
               />
             </div>
 
-            {/* Reward */}
             <div className="space-y-2">
-              <Label htmlFor="reward" className="text-foreground">
-                Reward (sats)
-              </Label>
+              <Label htmlFor="reward" className="text-[#2a1c12]">Reward (sats)</Label>
               <Input
                 id="reward"
                 type="number"
@@ -469,18 +453,15 @@ export default function MarketplacePage() {
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, reward: e.target.value }))
                 }
-                className="bg-background border-border text-foreground font-mono"
+                className="bg-[#fffbf3] border-[#b39a78] text-[#2a1c12] font-mono"
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-[#6e5e54]">
                 Marketplace adds 10% fee on top.
               </p>
             </div>
 
-            {/* Requester ID */}
             <div className="space-y-2">
-              <Label htmlFor="requester" className="text-foreground">
-                Requester ID
-              </Label>
+              <Label htmlFor="requester" className="text-[#2a1c12]">Requester ID</Label>
               <Input
                 id="requester"
                 value={formData.requester_id}
@@ -490,25 +471,18 @@ export default function MarketplacePage() {
                     requester_id: e.target.value,
                   }))
                 }
-                className="bg-background border-border text-foreground font-mono text-xs"
+                className="bg-[#fffbf3] border-[#b39a78] text-[#2a1c12] font-mono text-xs"
               />
             </div>
 
-            {/* Status Messages */}
             {postingStatus !== 'idle' && (
-              <div className="p-3 bg-accent/10 border border-accent/30 rounded text-sm text-foreground">
-                {postingStatus === 'requesting' && (
-                  <p>Requesting invoice...</p>
-                )}
-                {postingStatus === 'awaiting' && (
-                  <p>Awaiting payment...</p>
-                )}
+              <div className="p-3 bg-[#f1e3cb] border border-[#b39a78] rounded text-sm text-[#2a1c12]">
+                {postingStatus === 'requesting' && <p>Requesting invoice...</p>}
+                {postingStatus === 'awaiting' && <p>Awaiting payment...</p>}
                 {postingStatus === 'success' && (
                   <div>
-                    <p className="text-green-400 font-semibold mb-1">
-                      Job posted ✓
-                    </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-[#2a1c12] font-semibold mb-1">Job posted ✓</p>
+                    <p className="text-xs text-[#6e5e54]">
                       {postedJobId ? `Job ID: ${postedJobId}` : 'Check the marketplace for your new job.'}
                     </p>
                   </div>
@@ -516,28 +490,24 @@ export default function MarketplacePage() {
               </div>
             )}
 
-            {/* Submit Button */}
             <Button
               type="submit"
               disabled={postingStatus !== 'idle'}
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+              className="w-full bg-[#2a1c12] hover:bg-[#1a0e06] text-[#fffbf3] gap-2"
             >
               <Zap className="w-4 h-4" />
               Post Job {totalSats > 0 && `(${totalSats.toLocaleString()} sats)`}
             </Button>
 
-            {/* Fee Explainer */}
-            <div className="text-xs text-muted-foreground space-y-1">
+            <div className="text-xs text-[#6e5e54] space-y-1">
               <p>
                 You&apos;ll be charged{' '}
-                <span className="font-mono font-semibold text-foreground">
+                <span className="font-mono font-semibold text-[#2a1c12]">
                   {reward.toLocaleString()} + {fee.toLocaleString()} sats
                 </span>{' '}
                 via L402 over Lightning.
               </p>
-              <p>
-                The marketplace will return an invoice to pay.
-              </p>
+              <p>The marketplace will return an invoice to pay.</p>
             </div>
           </form>
         </DialogContent>

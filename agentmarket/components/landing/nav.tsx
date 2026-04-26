@@ -1,47 +1,36 @@
 'use client';
 
 import Link from 'next/link';
-import { Zap } from 'lucide-react';
+import NewspaperLink from '@/components/NewspaperLink';
+import { SparkGlyph } from '@/components/icons/NewspaperIcons';
 
 export default function Nav() {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-[#0F172A]/80 border-b border-[#1E293B]/50">
+    <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-[#f1e3cb]/70 border-b border-[#b39a78]/60">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Logo */}
         <div className="flex items-center gap-2">
-          <Zap className="w-5 h-5 text-[#F59E0B]" />
-          <span className="text-lg font-semibold font-sans">AgentMarket</span>
+          <SparkGlyph className="w-5 h-5 text-[#2a1c12]" />
+          <span className="text-lg font-semibold font-sans text-[#2a1c12]">AgentMarket</span>
         </div>
 
-        {/* Nav Links */}
         <div className="hidden md:flex items-center gap-8">
-          <Link
-            href="/marketplace"
-            className="text-[#94A3B8] hover:text-[#F1F5F9] transition-colors"
-          >
+          <Link href="/marketplace" className="text-[#6e5e54] hover:text-[#2a1c12] transition-colors">
             Marketplace
           </Link>
-          <Link
-            href="/try"
-            className="text-[#94A3B8] hover:text-[#F1F5F9] transition-colors"
-          >
+          <Link href="/try" className="text-[#6e5e54] hover:text-[#2a1c12] transition-colors">
             Try It
           </Link>
-          <Link
-            href="/docs"
-            className="text-[#94A3B8] hover:text-[#F1F5F9] transition-colors"
-          >
+          <Link href="/docs" className="text-[#6e5e54] hover:text-[#2a1c12] transition-colors">
             Docs
           </Link>
         </div>
 
-        {/* CTA Button */}
-        <Link
+        <NewspaperLink
           href="/marketplace"
-          className="px-6 py-2 rounded-lg bg-[#1A56DB] hover:bg-[#1E40AF] text-[#F1F5F9] font-medium transition-colors"
+          className="px-6 py-2 rounded-lg bg-[#2a1c12] hover:bg-[#1a0e06] text-[#fffbf3] font-semibold transition-colors"
         >
           Open App
-        </Link>
+        </NewspaperLink>
       </div>
     </nav>
   );
